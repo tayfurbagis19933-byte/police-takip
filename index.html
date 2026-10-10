@@ -236,6 +236,16 @@ dialog h3{margin:0 0 8px;font-size:17px}
   <p class="muted">Açıkken yalnızca aktif ve bitişi yakın poliçelerin müşteri adı, telefon, plaka ve bitiş tarihi kendi sunucuna gönderilir. Kurulum için supabase/README.md dosyasına bak.</p>
   <div class="actions"><button id="saveSettingsBtn" type="button">Ayarları kaydet</button><button id="syncBtn" type="button" class="secondary">Şimdi eşitle</button></div>
   <p class="muted" id="syncInfo"></p>
+  <h3 style="font-size:14px;margin:16px 0 8px">Komisyon oranları (%)</h3>
+  <div class="grid">
+    <div class="field"><label for="rateCo">Şirket</label><input id="rateCo" placeholder="Aksigorta" autocomplete="off"></div>
+    <div class="field"><label for="rateKind">Branş</label><select id="rateKind"></select></div>
+    <div class="field"><label for="rateVal">Oran (%)</label><input id="rateVal" type="number" step="0.01" min="0" max="100" inputmode="decimal" placeholder="12"></div>
+  </div>
+  <div class="actions"><button id="rateSave" type="button">Oranı kaydet</button></div>
+  <div id="rateList" class="muted"></div>
+  <p class="muted">Komisyon kutusu boşsa, prim × oran ile otomatik hesaplanır. Oranlar bulut yedeğine de kaydedilir.</p>
+  <p class="muted" id="appVer"></p>
   <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
   <div class="actions" style="margin-top:0">
     <button id="notifyBtn" type="button" class="secondary">Bildirimleri aç</button>
@@ -688,7 +698,7 @@ const OLD_KEY='policeTakip.personal.v2';
 const FIELDS=['customer','phone','plate','kind','company','policyNo','start','end','premium','commission','notes','followStatus','followUpDate'];
 const $=id=>document.getElementById(id);
 let db=null,records=[],tab='active',currentFile=null,removeFile=false,kindTouched=false,snoozeBackup=false,hiddenAt=0,deferredPrompt=null;
-const defaults={warningDays:10,agencyEmail:'',lastBackup:0,lastNotified:'',notify:false,pin:null,migrated:false,serverUrl:'',serverToken:'',lastSync:0,sbUrl:'https://ockkfgtfajshylvfwsmd.supabase.co',sbKey:'sb_publishable_0EGEQ8JkvDmQas9rlg0i5A_AEfuO8o2',sbEmail:'',sbSession:null,lastCloud:0};
+const defaults={learned:{},rates:{},warningDays:10,agencyEmail:'',lastBackup:0,lastNotified:'',notify:false,pin:null,migrated:false,serverUrl:'',serverToken:'',lastSync:0,sbUrl:'https://ockkfgtfajshylvfwsmd.supabase.co',sbKey:'sb_publishable_0EGEQ8JkvDmQas9rlg0i5A_AEfuO8o2',sbEmail:'',sbSession:null,lastCloud:0};
 const PAGE=40;let shown=PAGE,lastView='';
 let sync={lastPull:'',dirty:[],tomb:[],fileUp:[],fileRm:[],init:false};
 let settings={...defaults};
@@ -927,6 +937,37 @@ function setFile(f){
   $('ocrStatus').textContent='Belge okunuyor…';
   runOCR();
 }
+const APP_VER='v13';
+const rateFor=(company,kind)=>{const v=(settings.rates||{})[ckey(company,kind)];return v>0?v:0};
+const rateCommission=(company,kind,premium)=>{const pc=rateFor(company,kind);return pc&&premium>0?Math.round(premium*pc)/100:''};
+async function pushLearn(){
+  if(!cloudOn())return;
+  try{await sbFetch(`/storage/v1/object/docs/${settings.sbSession.uid}/_settings.json`,{method:'POST',headers:{'Content-Type':'application/json','x-upsert':'true'},body:JSON.stringify({learned:settings.learned||{},rates:settings.rates||{}})})}catch{}
+}
+async function pullLearn(){
+  if(!cloudOn())return;
+  try{
+    const res=await sbFetch(`/storage/v1/object/authenticated/docs/${settings.sbSession.uid}/_settings.json`);
+    if(!res.ok)return;
+    const j=await res.json();
+    settings.learned={...(j.learned||{}),...(settings.learned||{})};
+    settings.rates={...(j.rates||{}),...(settings.rates||{})};
+    await saveSettings();
+  }catch{}
+}
+function renderRates(){
+  const el=$('rateList');if(!el)return;
+  const e=Object.entries(settings.rates||{});
+  el.innerHTML=e.length?e.map(([k,v])=>`<div style="margin:6px 0">${esc(k.replace('|',' · '))}: %${esc(v)} <button type="button" class="secondary" data-rk="${esc(k)}">Sil</button></div>`).join(''):'Henüz komisyon oranı yok.';
+}
+async function saveRate(){
+  const co=$('rateCo').value.trim(),kind=$('rateKind').value,v=parseFloat(String($('rateVal').value).replace(',','.'));
+  if(!co){toast('Şirket adı gerekli.','err');return}
+  if(!(v>0&&v<=100)){toast('Oran 0 ile 100 arasında olmalı.','err');return}
+  settings.rates={...(settings.rates||{}),[ckey(co,kind)]:v};
+  await saveSettings();pushLearn();renderRates();
+  $('rateVal').value='';toast('Komisyon oranı kaydedildi.');
+}
 async function onSubmit(e){
   e.preventDefault();
   const id=$('editId').value,from=$('renewFrom').value,old=id?records.find(x=>x.id===id):null;
@@ -950,9 +991,18 @@ async function onSubmit(e){
       r.file={name:String(currentFile.name||'belge').slice(0,200),type,size:buf.byteLength};fileSet={id:r.id,type,buf};
     }
     else if(removeFile&&old&&old.file){r.file=null;fileDel=[r.id]}
+    if(r.commission===''){const rc=rateCommission(r.company,r.kind,r.premium);if(rc!=='')r.commission=rc}
+    const ocrTxt=(currentFile&&currentFile.type!=='application/pdf')?($('ocrText')?$('ocrText').textContent:''):'';
+    let learnBlob=null;
+    if(!removeFile&&currentFile)learnBlob=currentFile;
+    else if(!removeFile&&old&&old.file){const st=await getFileRec(old.id).catch(()=>null);if(st)learnBlob=new File([st.buf],String(old.file.name||'belge'),{type:st.type})}
     const put=[r];
     if(!id&&from){const prev=records.find(x=>x.id===from);if(prev)put.push({...prev,status:'renewed',replacedBy:r.id,renewedAt:now,updated:now})}
     await commit({put,fileSet,fileDel});
+    if(learnBlob&&r.company){
+      if(ocrTxt&&ocrTxt.trim())learnFromEdit([ocrTxt],r.company,r).catch(()=>{});
+      else if(learnBlob.type==='application/pdf')readDocument(learnBlob,{ocr:false}).then(p=>learnFromEdit(p,r.company,r)).catch(()=>{});
+    }
     toast('Poliçe kaydedildi.');reset();render();
   }catch(err){toast('Kaydedilemedi: '+dbError(err),'err')}
   finally{$('submitBtn').disabled=false}
@@ -1113,7 +1163,59 @@ async function readDocument(f,{ocr=true,setStatus=()=>{}}={}){
   if(!ocr)return[''];
   return[await ocrPhoto(f,st)];
 }
-const extractFromParts=parts=>mergeDocs(parts.map(extractPolicy));
+const extractFromParts=parts=>applyLearned(parts,mergeDocs(parts.map(extractPolicy)));
+/* ---- Öğrenilen etiketler: kullanıcı düzeltince, değerin önündeki etiket şirkete göre saklanır ---- */
+const LEARN_FIELDS=['customer','policyNo','premium','commission','start','end','plate'];
+const lkey=c=>fold(String(c||'')).replace(/[^a-z0-9]+/g,' ').trim();
+const ckey=(company,kind)=>lkey(company)+'|'+lkey(kind);
+function parseLearned(F,val){
+  if(!val)return '';
+  if(F==='customer')return nameFromTokens(val.split(/\s+/))||'';
+  if(F==='policyNo'){const t=val.split(/\s+/).map(x=>x.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g,'')).find(x=>x.length>=5&&/\d{4}/.test(x));return t?t.toUpperCase():''}
+  if(F==='premium'||F==='commission')return amountIn(val);
+  if(F==='start'||F==='end')return allDates(val)[0]||'';
+  if(F==='plate')return val.slice(0,140).replace(/\s+/g,' ').trim();
+  return '';
+}
+function applyLearned(parts,d){
+  const L=(settings.learned||{})[ckey(d.company,d.kind)];
+  if(!L||!parts||!parts.length)return d;
+  const lines=parts.join('\n').split(/\r?\n/);
+  const out={...d};
+  for(const F of LEARN_FIELDS){
+    const lab=L[F];if(!lab)continue;
+    const re=new RegExp(lab.split(' ').map(w=>w.replace(/[^a-z0-9]/g,'')).filter(Boolean).join('\\s+')+'(?:\\s*[:;]|\\s+)');
+    for(const line of lines){
+      const m=re.exec(fold(line));if(!m)continue;
+      const v=parseLearned(F,line.slice(m.index+m[0].length).replace(/^\s+/,'').trim());
+      if(v){out[F]=v;break}
+    }
+  }
+  return out;
+}
+function valuePos(F,nv,line){
+  if(F==='premium'||F==='commission'){const n=Number(nv);let m;const re=/\S+/g;while((m=re.exec(line))){const a=parseAmount(m[0]);if(a>0&&a===n)return m.index}return -1}
+  if(F==='start'||F==='end'){let m;const re=/\S+/g;while((m=re.exec(line))){if(allDates(m[0])[0]===nv)return m.index}return -1}
+  return fold(line).indexOf(fold(nv));
+}
+async function learnFromEdit(parts,company,rec){
+  const ck=ckey(company,rec.kind);if(lkey(company)===''||!parts||!parts.length)return;
+  const base=mergeDocs(parts.map(extractPolicy));
+  const lines=parts.join('\n').split(/\r?\n/);
+  const learned={...(settings.learned||{})};let changed=false;
+  for(const F of LEARN_FIELDS){
+    const nv=rec[F]==null?'':String(rec[F]);if(!nv)continue;
+    if(base[F]&&String(base[F])===nv)continue;
+    for(const line of lines){
+      const pos=valuePos(F,nv,line);if(pos<0)continue;
+      const prefix=line.slice(0,pos),c=prefix.lastIndexOf(':');
+      const lab=lkey(c>=0?prefix.slice(0,c):prefix).split(' ').slice(-3).join(' ');
+      if(lab.length>=3&&/[a-z]{3}/.test(lab)){learned[ck]={...(learned[ck]||{}),[F]:lab};changed=true}
+      break;
+    }
+  }
+  if(changed){settings.learned=learned;await saveSettings();pushLearn()}
+}
 async function runOCR(){
   if($('ocrBtn').disabled)return;
   let f=currentFile;
@@ -1205,7 +1307,7 @@ async function bulkImport(fileList){
           let blob=f,type=fileType(f);
           if(type!=='application/pdf'){const c=await compressImage(f);if(c){blob=c;type='image/jpeg'}}
           const buf=await blob.arrayBuffer();
-          const r=normalize({id:uid(),customer:d.customer||('Kontrol: '+String(f.name||'belge').replace(/\.[^.]+$/,'').slice(0,60)),phone:d.phone||'',plate:d.plate||'',kind,company:d.company||'',policyNo:d.policyNo||'',start:d.start||'',end:d.end||'',premium:d.premium||'',commission:d.commission||'',notes:readErr?'Belge otomatik okunamadı ('+readErr+'). Bilgileri elle gir.':isPhoto?'Fotoğraftan okundu; değerleri belgeyle karşılaştır.':needs?'Toplu yüklemede okundu; eksik alanları kontrol et.':'',review:needs,created:now,updated:now});
+          const r=normalize({id:uid(),customer:d.customer||('Kontrol: '+String(f.name||'belge').replace(/\.[^.]+$/,'').slice(0,60)),phone:d.phone||'',plate:d.plate||'',kind,company:d.company||'',policyNo:d.policyNo||'',start:d.start||'',end:d.end||'',premium:d.premium||'',commission:d.commission||rateCommission(d.company,kind,Number(d.premium)),notes:readErr?'Belge otomatik okunamadı ('+readErr+'). Bilgileri elle gir.':isPhoto?'Fotoğraftan okundu; değerleri belgeyle karşılaştır.':needs?'Toplu yüklemede okundu; eksik alanları kontrol et.':'',review:needs,created:now,updated:now});
           r.file={name:String(f.name||'belge').slice(0,200),type,size:buf.byteLength};
           if(key)seen.add(key);
           bp.push(r);bf.push({id:r.id,type,buf});ok++;if(needs)rev++;
@@ -1483,8 +1585,10 @@ async function cloudSync(manual){
   try{
     if(!sync.init)await markAll();
     info('Buluttan okunuyor…');
+    await pullLearn();
     const pulled=await cloudPull();if(pulled)render();
     const failed=await cloudPush(info);
+    await pushLearn();
     settings.lastCloud=Date.now();await saveSettings();
     info(`Son eşitleme: ${new Date().toLocaleString('tr-TR')} · ${records.length} kayıt`+(pulled?` · buluttan ${pulled} kayıt alındı`:'')+(failed?` · ${failed} belge gönderilemedi (${sync.lastFileErr||'hata'}); sonraki eşitlemede tekrar denenecek`:''));
     if(manual)toast(failed?'Eşitleme bitti, bazı belgeler gönderilemedi.':'Bulut eşitleme tamam.',failed?'err':undefined);
@@ -1625,6 +1729,11 @@ function updateSettingsUI(){
 function bind(){
   KINDS.forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k==='Trafik'?'Trafik sigortası':k;$('kind').appendChild(o)});
   $('policyForm').addEventListener('submit',onSubmit);
+  $('rateKind').innerHTML=KINDS.map(k=>`<option>${esc(k)}</option>`).join('');
+  $('rateSave').addEventListener('click',saveRate);
+  $('rateList').addEventListener('click',async e=>{const k=e.target&&e.target.dataset&&e.target.dataset.rk;if(!k)return;const n={...(settings.rates||{})};delete n[k];settings.rates=n;await saveSettings();pushLearn();renderRates()});
+  $('appVer').textContent='Sürüm: '+APP_VER;
+  renderRates();
   $('resetBtn').onclick=reset;
   $('kind').addEventListener('change',()=>{kindTouched=true});
   $('start').addEventListener('change',()=>{const s=$('start').value;if(isDate(s)&&(!$('end').value||$('end').dataset.auto==='1')){$('end').value=addYear(s);$('end').dataset.auto='1'}});
