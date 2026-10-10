@@ -363,7 +363,7 @@ function amountAfter(f,labels){
   }
   return '';
 }
-function premiumOf(f){return amountAfter(f,['brut\\s+prim','toplam\\s+prim','toplam\\s+odenecek','odenecek\\s+(?:tutar|prim)','prim\\s+tutari','genel\\s+toplam','toplam\\s+tutar','tahsilat\\s+tutari','net\\s+prim','prim\\s*:'])}
+function premiumOf(f){return amountAfter(f,['brut\\s+prim','toplam\\s+prim','toplam\\s+odenecek','odenecek\\s+(?:tutar|prim)','prim\\s+tutari','genel\\s+toplam','toplam\\s+tutar','tahsilat\\s+tutari','net\\s+prim','primi\\s*:','prim\\s*:'])}
 function commissionOf(f){return amountAfter(f,['komisyon\\s+tutari','komisyon','acente\\s+komisyonu'])}
 
 
@@ -473,7 +473,7 @@ const lettersOnly=t=>fold(t).replace(/[^a-z]/g,'');
 const LABEL_WORDS=['adi','soyadi','soyad','unvani','unvan','sigortali','sigortaettiren','musteri','tc','kimlik','no','police','tarihi','tarih','baslangic','bitis','prim','plaka','adres','telefon','nin','bilgileri','bilgisi','indirim','bilgisi','bilgi','paket','network','odenecek','tutar'];
 function badName(name){
   const toks=String(name).split(/\s+/).map(lettersOnly);
-  return toks.some(t=>t.length>=2&&LABEL_WORDS.some(w=>t===w||(w.length>=5&&t.length>=4&&lev(t,w)<=1)));
+  return toks.some(t=>t.length>=2&&LABEL_WORDS.some(w=>t===w||(w.length>=5&&t.length>=5&&lev(t,w)<=1)));
 }
 /* [etiket, öncelik]: OCR hatalarına (Joplam, Poligeno, Soyadh ...) karşı bulanık eşleşir */
 const LAB_SETS={
@@ -574,6 +574,14 @@ function extractPolicy(raw){
   out.policyNo=pn.toUpperCase();
 
   out.plate=plateOf(text,f);
+  if(!out.plate){
+    const am=/(?:^|\s)adres\s*:\s*(.{5,160}?)(?=\s+(?:bina|daire|toplam|bulundu|hasar|ada|parsel|tapu|bagimsiz|sigorta|dask|adres\s+kodu|yapi|kat\b|temina)|$)/i.exec(fold(text));
+    if(am){const st=am.index+am[0].length-am[1].length;let a=text.slice(st,st+am[1].length).replace(/\s+/g,' ').trim();if(a.length>=5){
+      const lm=/il\s*\/\s*ilce[^:]{0,30}:\s*([^\/\s]+)\/([^\/\s]+)/i.exec(fold(text));
+      if(lm){const end=lm.index+lm[0].length;const il=text.slice(end-lm[2].length,end);const ilce=text.slice(end-lm[2].length-1-lm[1].length,end-lm[2].length-1);
+        const j=`${tcase(il.trim())}/${tcase(ilce.trim())}`;if(j.length>3)a=a.replace(/[\s,]+$/,'')+', '+j}
+      out.plate=a.slice(0,140)}}
+  }
   const ph=/(0\s?5\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2})/.exec(text);if(ph)out.phone=ph[1].replace(/\s+/g,'');
 
   out.start=dateToken(ht['baslama tarihi']||ht['baslangic tarihi'])||dateAfter(f,'basla(?:ma|ngic)');
@@ -1137,6 +1145,18 @@ async function runOCR(){
 
 /* ---------- Toplu yükleme ve CSV içe aktarma ---------- */
 let bulkCancel=false,bulkRunning=false;
+function mergeFields(old,d,zeyl,f,now){
+  const m={};
+  for(const k of ['customer','phone','plate','kind','company','policyNo','start','end','premium','commission']){
+    const v=d[k]==null?'':d[k];
+    if(!v||(k==='kind'&&v==='Diğer'))continue;
+    if(k==='policyNo'&&old[k])continue;
+    if(zeyl>0||!old[k]||(k==='customer'&&/^kontrol:/i.test(old[k])))m[k]=v;
+  }
+  m.notes=[old.notes,zeyl?`Zeyl ${zeyl} birleştirildi (${(f&&f.name)||'belge'}).`:`Ek belge birleştirildi (${(f&&f.name)||'belge'}).`].filter(Boolean).join(' · ').slice(0,2000);
+  m.review=false;m.updated=now;
+  return m;
+}
 async function bulkImport(fileList){
   if(bulkRunning)return;
   const files=[...fileList].filter(f=>ALLOWED.has(fileType(f)));
@@ -1146,14 +1166,14 @@ async function bulkImport(fileList){
   $('bulkCancelBtn').hidden=false;$('bulkPickBtn').disabled=true;$('bulkBar').hidden=false;$('bulkBar').max=files.length;$('bulkBar').value=0;
   let wl=null;try{if(navigator.wakeLock)wl=await navigator.wakeLock.request('screen')}catch{}
   const seen=new Set(records.filter(r=>r.policyNo).map(r=>trLower(r.policyNo)+'|'+r.kind));
-  let ok=0,dup=0,fail=0,rev=0,done=0;
+  let ok=0,dup=0,fail=0,rev=0,done=0,mrg=0;
   const bp=[],bf=[];
   const flush=async()=>{if(!bp.length)return;const a=bp.splice(0),b=bf.splice(0);await commit({put:a,fileSet:b});render()};
   try{
     for(const f of files){
       if(bulkCancel)break;
       const label=`${done+1}/${files.length}: ${f.name||'dosya'}`;
-      const stat=()=>`eklenen ${ok} · tekrar ${dup} · hatalı ${fail} · kontrol ${rev}`;
+      const stat=()=>`eklenen ${ok} · birleşen ${mrg} · tekrar ${dup} · hatalı ${fail} · kontrol ${rev}`;
       $('bulkInfo').textContent=label+' ('+stat()+')';
       try{
         if(f.size>MAX_FILE)throw new Error('15 MB üzeri');
@@ -1163,6 +1183,21 @@ async function bulkImport(fileList){
         const d=extractFromParts(parts),now=new Date().toISOString(),type0=fileType(f);
         const kind=KINDS.includes(d.kind)?d.kind:'Diğer';
         const key=d.policyNo?trLower(d.policyNo)+'|'+kind:'';
+        const bnum=x=>trLower(x).split('/')[0].replace(/\s/g,'');
+        const txt=fixTurkish((parts||[]).join('\n'));
+        const zm=/(?:zeyl|ek\s+belge)\s*no\s*[:\-]?\s*(\d+)/i.exec(txt);const zeyl=zm?+zm[1]:0;
+        const pend=d.policyNo?bp.find(r=>r.policyNo&&bnum(r.policyNo)===bnum(d.policyNo)):null;
+        const old=d.policyNo?records.find(r=>r.policyNo&&bnum(r.policyNo)===bnum(d.policyNo)):null;
+        if(pend){
+          const m=normalize({...pend,...mergeFields(pend,d,zeyl,f,now)});m.file=pend.file;
+          Object.assign(pend,m);mrg++;done++;$('bulkBar').value=done;continue;
+        }
+        if(old){
+          /* Zeyl veya aynı poliçenin ek belgesi: mevcut kaydı birleştir. Zeyl ise yeni değerler öncelikli. */
+          const m=normalize({...old,...mergeFields(old,d,zeyl,f,now)});m.file=old.file;
+          await commit({put:[m]});render();
+          mrg++;done++;$('bulkBar').value=done;continue;
+        }
         if(key&&seen.has(key)){dup++}
         else{
           const isPhoto=type0!=='application/pdf';
@@ -1180,7 +1215,7 @@ async function bulkImport(fileList){
       done++;$('bulkBar').value=done;
     }
     await flush();
-    $('bulkInfo').textContent=`${bulkCancel?'Durduruldu. ':'Bitti. '}Eklenen ${ok}, tekrar (atlandı) ${dup}, okunamayan ${fail}, kontrol gereken ${rev}.`;
+    $('bulkInfo').textContent=`${bulkCancel?'Durduruldu. ':'Bitti. '}Eklenen ${ok}, birleştirilen ${mrg}, tekrar (atlandı) ${dup}, okunamayan ${fail}, kontrol gereken ${rev}.`;
     toast(`${ok} poliçe eklendi${rev?`, ${rev} tanesi kontrol bekliyor`:''}.`);
   }catch(e){
     try{await flush()}catch{}
