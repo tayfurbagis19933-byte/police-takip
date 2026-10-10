@@ -336,8 +336,8 @@ function buildCSV(list){
 const FOLD={'İ':'i','I':'i','ı':'i','Ş':'s','ş':'s','Ğ':'g','ğ':'g','Ü':'u','ü':'u','Ö':'o','ö':'o','Ç':'c','ç':'c'};
 const fold=s=>String(s).replace(/[İIıŞşĞğÜüÖöÇç]/g,c=>FOLD[c]).toLowerCase();
 const tcase=t=>t.charAt(0).toLocaleUpperCase('tr')+t.slice(1).toLocaleLowerCase('tr');
-const COMPANIES=[['raysigorta','Ray Sigorta'],['ray sigorta','Ray Sigorta'],['hepiyi','Hepiyi Sigorta A.Ş.'],['allianz','Allianz Sigorta'],['axa','AXA Sigorta'],['anadolu sigorta','Anadolu Sigorta'],['aksigorta','Aksigorta'],['mapfre','Mapfre Sigorta'],['sompo','Sompo Sigorta'],['hdi','HDI Sigorta'],['turkiye sigorta','Türkiye Sigorta'],['neova','Neova Sigorta'],['quick sigorta','Quick Sigorta'],['ray sigorta','Ray Sigorta'],['ergo','Ergo Sigorta'],['gulf sigorta','Gulf Sigorta'],['groupama','Groupama Sigorta'],['generali','Generali Sigorta'],['doga sigorta','Doğa Sigorta'],['unico','Unico Sigorta'],['corpus','Corpus Sigorta'],['bereket','Bereket Sigorta'],['ankara sigorta','Ankara Sigorta'],['koru sigorta','Koru Sigorta'],['magdeburger','Magdeburger Sigorta'],['orient sigorta','Orient Sigorta'],['turk nippon','Türk Nippon Sigorta'],['atlas sigorta','Atlas Sigorta'],['gunes sigorta','Güneş Sigorta'],['zurich','Zurich Sigorta'],['eureko','Eureko Sigorta'],['halk sigorta','Halk Sigorta'],['ziraat sigorta','Ziraat Sigorta'],['qnb sigorta','QNB Sigorta'],['bupa','Bupa Acıbadem Sigorta'],['turkiye katilim','Türkiye Katılım Sigorta'],['ak sigorta','Aksigorta'],['dubai','Dubai Sigorta']];
-const NAME_STOP=new Set(['tc','tckn','kimlik','vergi','adres','adresi','telefon','tel','police','no','plaka','sigorta','dogum','cinsiyet','tarih','tarihi','numarasi','numara','sasi','motor','marka','model','cep','gsm','eposta','email','il','ilce','mah','sok','cad','acente','vade','baslama','baslangic','bitis','prim','odenecek','toplam','brut','net','sirketi','kasko','trafik','konut','dask','sigortasi','policesi','donem','gecerlilik','musteri','sigortali','ettiren','nin','bilgileri','bilgisi']);
+const COMPANIES=[['anadolu anonim turk','Anadolu Sigorta'],['raysigorta','Ray Sigorta'],['ray sigorta','Ray Sigorta'],['hepiyi','Hepiyi Sigorta A.Ş.'],['allianz','Allianz Sigorta'],['axa','AXA Sigorta'],['anadolu sigorta','Anadolu Sigorta'],['aksigorta','Aksigorta'],['mapfre','Mapfre Sigorta'],['sompo','Sompo Sigorta'],['hdi','HDI Sigorta'],['turkiye sigorta','Türkiye Sigorta'],['neova','Neova Sigorta'],['quick sigorta','Quick Sigorta'],['ray sigorta','Ray Sigorta'],['ergo','Ergo Sigorta'],['gulf sigorta','Gulf Sigorta'],['groupama','Groupama Sigorta'],['generali','Generali Sigorta'],['doga sigorta','Doğa Sigorta'],['unico','Unico Sigorta'],['corpus','Corpus Sigorta'],['bereket','Bereket Sigorta'],['ankara sigorta','Ankara Sigorta'],['koru sigorta','Koru Sigorta'],['magdeburger','Magdeburger Sigorta'],['orient sigorta','Orient Sigorta'],['turk nippon','Türk Nippon Sigorta'],['atlas sigorta','Atlas Sigorta'],['gunes sigorta','Güneş Sigorta'],['zurich','Zurich Sigorta'],['eureko','Eureko Sigorta'],['halk sigorta','Halk Sigorta'],['ziraat sigorta','Ziraat Sigorta'],['qnb sigorta','QNB Sigorta'],['bupa','Bupa Acıbadem Sigorta'],['turkiye katilim','Türkiye Katılım Sigorta'],['ak sigorta','Aksigorta'],['dubai','Dubai Sigorta']];
+const NAME_STOP=new Set(['iletisim','tc','tckn','kimlik','vergi','adres','adresi','telefon','tel','police','no','plaka','sigorta','dogum','cinsiyet','tarih','tarihi','numarasi','numara','sasi','motor','marka','model','cep','gsm','eposta','email','il','ilce','mah','sok','cad','acente','vade','baslama','baslangic','bitis','prim','odenecek','toplam','brut','net','sirketi','kasko','trafik','konut','dask','sigortasi','policesi','donem','gecerlilik','musteri','sigortali','ettiren','nin','bilgileri','bilgisi']);
 const DATE_RE='(\\d{1,2})\\s?[./-]\\s?(\\d{1,2})\\s?[./-]\\s?(\\d{4})';
 const toISO=(d,m,y)=>{if(+y<1990||+y>2100)return '';const s=`${y}-${pad(m)}-${pad(d)}`;return isDate(s)?s:''};
 const dateToken=t=>{const m=new RegExp('^'+DATE_RE+'$').exec(String(t||''));return m?toISO(m[1],m[2],m[3]):''};
@@ -368,14 +368,14 @@ function commissionOf(f){return amountAfter(f,['komisyon\\s+tutari','komisyon','
 
 
 /* Tablo başlığı + değer satırı: "Müşteri No. Acente No Poliçe No ... Bitiş Tarihi Gün" ardından "100645994 400011 3010... " */
-const HDR_ALT=['musteri no','acente no','police no','zeyil no','tanzim tarihi','baslama tarihi','baslangic tarihi','bitis tarihi','gun'].map(l=>l.replace(/ /g,'\\s+')).join('|');
+const HDR_ALT=['musteri no','acente no','police no','zeyil no','tanzim tarihi','baslama tarihi','baslangic tarihi','bitis tarihi','urun kodu','gun'].map(l=>l.replace(/ /g,'\\s+')).join('|');
 function headerTable(f,text){
   const out={};
   const run=new RegExp('(?:\\b(?:'+HDR_ALT+')\\b\\.?\\s*){3,}','g');
   let m;
   while((m=run.exec(f))){
     const labs=[...m[0].matchAll(new RegExp('\\b('+HDR_ALT+')\\b','g'))].map(x=>x[1].replace(/\s+/g,' '));
-    const toks=text.slice(m.index+m[0].length).split(/\s+/).filter(Boolean).slice(0,labs.length);
+    const toks=text.slice(m.index+m[0].length).replace(/^\s*s[üu]re\s*\([^)]*\)\s*/i,'').split(/\s+/).filter(Boolean).slice(0,labs.length);
     if(toks.length<labs.length)continue;
     labs.forEach((l,i)=>{if(!(l in out))out[l]=toks[i]});
   }
@@ -405,7 +405,7 @@ function companyOf(text,f){
 }
 function customerOf(text,f){
   const LAB='(?:sigortali(?:\\s+adi\\s+soyadi)?|sigorta\\s+ettiren(?:\\s+adi\\s+soyadi)?|musteri(?:\\s+adi\\s+soyadi)?|adi\\s+soyadi)(?:\\s*\\/\\s*unvani?)?';
-  const NAME='([a-z]{2,}(?:\\s+[a-z]{2,}){1,4})';
+  const NAME='([a-z]{2,}(?:\\s+[a-z]{2,}){1,8})';
   // 1. geçiş: iki nokta zorunlu ("...sigortalıya düşen hukuki sorumluluk" gibi cümleleri yanlışlıkla yakalamasın)
   // 2. geçiş: yalnızca "adı soyadı" etiketi için iki nokta olmadan
   const res=[new RegExp(LAB+'\\s*:\\s*'+NAME,'g'),new RegExp('ad\\s+soyad\\s*\\/\\s*unvan\\s*:\\s*'+NAME,'g'),new RegExp('adi\\s+soyadi(?:\\s*\\/\\s*unvani?)?\\s*[:\\-]?\\s*'+NAME,'g')];
@@ -415,8 +415,8 @@ function customerOf(text,f){
       const end=m.index+m[0].length;
       const raw=text.slice(end-m[1].length,end);
       const toks=[];
-      for(const t of raw.split(/\s+/)){if(NAME_STOP.has(fold(t)))break;toks.push(t)}
-      if(toks.length>=2)return toks.slice(0,4).map(tcase).join(' ');
+      for(const t of raw.split(/\s+/)){const ft=fold(t);if(NAME_STOP.has(ft)&&!(ft==='sirketi'&&toks.length&&/^(anonim|limited|ltd)$/.test(fold(toks[toks.length-1]))))break;toks.push(t)}
+      if(toks.length>=2)return toks.slice(0,8).map(tcase).join(' ');
     }
   }
   return '';
@@ -575,7 +575,7 @@ function extractPolicy(raw){
 
   out.plate=plateOf(text,f);
   if(!out.plate){
-    const am=/(?:^|\s)adres\s*:\s*(.{5,160}?)(?=\s+(?:bina|daire|toplam|bulundu|hasar|ada|parsel|tapu|bagimsiz|sigorta|dask|adres\s+kodu|yapi|kat\b|temina)|$)/i.exec(fold(text));
+    const am=/(?:^|\s)adres(?:i)?\s*:\s*(.{5,160}?)(?=\s+(?:bina|daire|toplam|bulundu|hasar|ada|parsel|tapu|bagimsiz|sigorta|dask|adres\s+kodu|yapi|kat\b|temina|rizik|sbm|faaliyet|metrekare|enflasyon|dain|riziko|uavt|kullanim|il\s*\/)|$)/i.exec(fold(text));
     if(am){const st=am.index+am[0].length-am[1].length;let a=text.slice(st,st+am[1].length).replace(/\s+/g,' ').trim();if(a.length>=5){
       const lm=/il\s*\/\s*ilce[^:]{0,30}:\s*([^\/\s]+)\/([^\/\s]+)/i.exec(fold(text));
       if(lm){const end=lm.index+lm[0].length;const il=text.slice(end-lm[2].length,end);const ilce=text.slice(end-lm[2].length-1-lm[1].length,end-lm[2].length-1);
