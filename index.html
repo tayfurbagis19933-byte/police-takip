@@ -470,7 +470,7 @@ function lev(a,b){
   return prev[b.length];
 }
 const lettersOnly=t=>fold(t).replace(/[^a-z]/g,'');
-const LABEL_WORDS=['adi','soyadi','soyad','unvani','unvan','sigortali','sigortaettiren','musteri','tc','kimlik','no','police','tarihi','tarih','baslangic','bitis','prim','plaka','adres','telefon'];
+const LABEL_WORDS=['adi','soyadi','soyad','unvani','unvan','sigortali','sigortaettiren','musteri','tc','kimlik','no','police','tarihi','tarih','baslangic','bitis','prim','plaka','adres','telefon','indirim','bilgisi','bilgi','paket','network','odenecek','tutar'];
 function badName(name){
   const toks=String(name).split(/\s+/).map(lettersOnly);
   return toks.some(t=>t.length>=2&&LABEL_WORDS.some(w=>t===w||(w.length>=5&&t.length>=4&&lev(t,w)<=1)));
@@ -539,6 +539,24 @@ const KEYF=['policyNo','end','start','customer','plate','premium','company'];
 const scoreDoc=d=>KEYF.reduce((n,k)=>n+(d&&d[k]?1:0),0);
 const mergeDocs=list=>{const o={};for(const d of list)for(const k of Object.keys(d||{}))if(!o[k]&&d[k])o[k]=d[k];return o};
 
+const addDaysISO=(s,n)=>{const d=new Date(s+'T00:00:00');d.setDate(d.getDate()+n);return isoDate(d)};
+/* Sütunlu tablo: "Sigortalı | Paket/Network ..." başlığı, altında "SONGÜL BAĞIŞ Yatışlı + Yatışsız İSTANBUL ..." */
+function columnCustomer(lines){
+  for(let i=0;i<lines.length-1;i++){
+    const h=fold(lines[i]).trim();
+    if(!/^sigortali(\s+(paket|network|adi|soyadi|unvan)|\s*$)/.test(h)||/[:;]/.test(h))continue;
+    if(h.split(/\s+/).length<2&&!/^sigortali\s*$/.test(h))continue;
+    for(let j=i+1;j<Math.min(i+3,lines.length);j++){
+      const toks=lines[j].trim().split(/\s+/),name=[];
+      for(const t of toks){
+        const w=t.replace(/[*.,]+$/,'');
+        if(/^[A-ZÇĞİÖŞÜ]{2,}$/.test(w)&&!NAME_STOP.has(fold(w)))name.push(w);else break;
+      }
+      if(name.length>=2&&name.length<=4){const n=name.map(tcase).join(' ');if(!badName(n))return n}
+    }
+  }
+  return '';
+}
 function extractPolicy(raw){
   const prepped=prepText(raw);
   const lines=prepped.split(/\r?\n/);
@@ -563,10 +581,22 @@ function extractPolicy(raw){
   if(!out.start||!out.end){const r=rangeAfter(f,'(?:vade|police suresi|sigorta donemi|donem)');if(r){out.start=out.start||r[0];out.end=out.end||r[1]}}
   if(!out.start||!out.end){const r=datePair(f);if(r){out.start=out.start||r[0];out.end=out.end||r[1]}}
 
+  if(!out.policyNo){
+    const tk=/teklif\s+no\b/.exec(f);
+    if(tk){const seg=text.slice(tk.index,tk.index+400).match(/(?:^|[^0-9A-Za-z])(\d{7,14})(?![0-9])/);if(seg)out.policyNo=seg[1]}
+  }
+  if(!out.start||!out.end){
+    const si=f.search(/sigorta\s+suresi/);
+    if(si>=0){
+      const tail=text.slice(si,si+500),ds=allDates(fold(tail));
+      if(!out.start&&ds.length)out.start=ds[0];
+      if(!out.end&&out.start){const gm=/(\d{3})\s*gun\b/.exec(fold(text.slice(si,si+600)));if(gm&&+gm[1]>=360&&+gm[1]<=370)out.end=addDaysISO(out.start,+gm[1])}
+    }
+  }
   out.premium=premiumOf(f);
   out.commission=commissionOf(f);
   out.kind=kindOf(f);
-  out.customer=customerFromLines(lines)||customerOf(text,f);
+  out.customer=columnCustomer(lines)||customerFromLines(lines)||customerOf(text,f);
   if(out.customer&&badName(out.customer))out.customer='';
   out.company=companyOf(text,f);
   const fz=fuzzyFields(lines);
