@@ -406,7 +406,7 @@ function commissionOf(f){return amountAfter(f,['komisyon\\s+tutari','komisyon','
 
 
 /* Tablo başlığı + değer satırı: "Müşteri No. Acente No Poliçe No ... Bitiş Tarihi Gün" ardından "100645994 400011 3010... " */
-const HDR_ALT=['musteri no','acente no','police no','zeyil no','tanzim tarihi','baslama tarihi','baslangic tarihi','bitis tarihi','urun kodu','gun'].map(l=>l.replace(/ /g,'\\s+')).join('|');
+const HDR_ALT=['musteri no','acente no','police no','zeyil no','zeyl no','ek no','yenileme no','tanzim tarihi','baslama tarihi','baslangic tarihi','bitis tarihi','urun kodu','sure','gun'].map(l=>l.replace(/ /g,'\\s+')).join('|');
 function headerTable(f,text){
   const out={};
   const run=new RegExp('(?:\\b(?:'+HDR_ALT+')\\b\\.?\\s*){3,}','g');
@@ -595,6 +595,54 @@ function columnCustomer(lines){
   }
   return '';
 }
+/* Sütunlu prim tablosu: "Garanti Fonu  Trafik Fonu  Ödenecek Prim" başlığı, altında "386.03 TL  965.06 TL  21,617.44 TL" */
+const PREM_COL=/(?:toplam\s+brut\s+prim|brut\s+prim|odenecek\s+prim|odenecek\s+tutar|toplam\s+odenecek|toplam\s+prim|genel\s+toplam)/;
+function columnPremium(lines){
+  const AMT_G=/(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})(?!\d)/g;
+  for(let i=0;i<lines.length-1;i++){
+    const h=fold(lines[i]).replace(/\s+/g,' ').trim();
+    if(!h||/[:;]/.test(h)||/\d/.test(h))continue;
+    const atEnd=new RegExp(PREM_COL.source+'\\s*(?:\\(tl\\))?$').test(h),atStart=new RegExp('^'+PREM_COL.source).test(h);
+    if(!atEnd&&!atStart)continue;
+    const nx=lines[i+1]||'',amts=[...nx.matchAll(AMT_G)].map(x=>parseAmount(x[1]));
+    if(amts.length<2)continue;
+    if(nx.replace(AMT_G,'').replace(/\b(?:tl|try)\b|₺/gi,'').trim())continue; // satırda yalnızca tutarlar olmalı
+    const v=atEnd?amts[amts.length-1]:amts[0];
+    if(v>0&&v<1e8)return String(v);
+  }
+  return '';
+}
+/* "Etiket : Değer" satırlarından müşteri adı. Öncelik: Sigortalı > Ad Soyad/Unvan > Sigorta Ettiren/Müşteri.
+   Değer bir sonraki satıra taşmaz ("Müşteri : Oğuzhan Bağış" + "Uavt: ..." gibi). Şirket unvanları tam alınır. */
+const CUST_LAB=/^\s*(sigortali(?:nin)?(?:\s+bilgileri)?(?:\s+adi\s+soyadi)?(?:\s*\/\s*unvani?)?|ad(?:i)?\s+soyad(?:i)?(?:\s*\/\s*unvan(?:i)?)?|unvan(?:i)?|sigorta\s+ettiren(?:\s+adi\s+soyadi)?(?:\s*\/\s*unvani?)?|musteri(?:\s+adi\s+soyadi)?(?:\s*\/\s*unvani?)?)\s*:\s*/;
+const CO_WORDS=new Set(['sanayi','ticaret','limited','sirketi','anonim','ltd','sti','as','a.s','a.s.','ve','san','tic','insaat','gida','otomotiv','turizm','nakliyat','lojistik','medya','yapim']);
+function lineCustomer(lines){
+  let best='',bestRank=0;
+  for(let i=0;i<lines.length;i++){
+    const fl=fold(lines[i]);const m=CUST_LAB.exec(fl);if(!m)continue;
+    const lab=m[1];
+    const rank=/^sigortali/.test(lab)?3:/^(ad|unvan)/.test(lab)?2:1;
+    if(rank<=bestRank)continue;
+    let val=lines[i].slice(m[0].length).trim();
+    if(!val)val=String(lines[i+1]||'').trim();
+    const toks=[];
+    for(const t of val.split(/\s+/)){
+      if(!t||/[\d:*@]/.test(t))break;
+      const ft=lettersOnly(t);
+      if(!ft)break;
+      const isCo=CO_WORDS.has(ft)||CO_WORDS.has(fold(t));
+      if(NAME_STOP.has(ft)&&!(isCo&&toks.length>=2))break;
+      if(!/^[A-Za-zÇĞİıÖŞÜçğöşüÂâÎîÛû'.&-]+$/.test(t))break;
+      toks.push(t);if(toks.length>=10)break;
+    }
+    if(toks.length<2)continue;
+    const name=toks.map(t=>/^(a\.ş\.?|ltd\.?|şti\.?)$/i.test(t)?t.toLocaleUpperCase('tr'):tcase(t)).join(' ');
+    if(badName(name))continue;
+    best=name;bestRank=rank;
+    if(rank===3)break;
+  }
+  return best;
+}
 function extractPolicy(raw){
   const prepped=prepText(raw);
   const lines=prepped.split(/\r?\n/);
@@ -606,14 +654,24 @@ function extractPolicy(raw){
   let pn=ht['police no']||'';
   if(!(/\d{4}/.test(pn)&&pn.length>=5)){
     pn='';
-    const m=/(?:police(?:\s*\/\s*zeyil)?\s*(?:no|numarasi|numara)|pol\.?\s*no)\s*[:#.\-]?\s*([a-z0-9][a-z0-9\/\-.]{5,})/.exec(f);
-    if(m&&/\d{4}/.test(m[1])){const end=m.index+m[0].length;pn=text.slice(end-m[1].length,end).replace(/[.\-\/]+$/,'');const sfx=/^\s?\/\s?(\d{1,2})(?![\d])/.exec(text.slice(end));if(sfx&&!pn.includes('/'))pn+='/'+sfx[1]}
+    // "SBM Poliçe No", "Önceki Poliçe No", "Şirketi Poliçe No" asıl poliçe numarası değildir
+    const re=/(?<!(?:sbm|onceki|eski|sirketi|sirket)\s*)(?:police(?:\s*\/\s*(zeyil|zeyl|yenileme))?\s*(?:no|numarasi|numara)|pol\.?\s*no)\s*[:#.\-]?\s*([a-z0-9][a-z0-9\/\-.]{5,})/g;
+    let m;
+    while((m=re.exec(f))){
+      if(!/\d{4}/.test(m[2]))continue;
+      const end=m.index+m[0].length;pn=text.slice(end-m[2].length,end).replace(/[.\-\/]+$/,'');
+      const sfx=/^\s?\/\s?(\d{1,2})(?![\d])/.exec(text.slice(end));if(sfx&&m[1]!=='yenileme'&&!pn.includes('/'))pn+='/'+sfx[1];
+      break;
+    }
   }
   out.policyNo=pn.toUpperCase();
 
   out.plate=plateOf(text,f);
   if(!out.plate){
-    const am=/(?:^|\s)adres(?:i)?\s*:\s*(.{5,160}?)(?=\s+(?:bina|daire|toplam|bulundu|hasar|ada|parsel|tapu|bagimsiz|sigorta|dask|adres\s+kodu|yapi|kat\b|temina|rizik|sbm|faaliyet|metrekare|enflasyon|dain|riziko|uavt|kullanim|il\s*\/)|$)/i.exec(fold(text));
+    // Maskeli (Çİ**** Ma**) iletişim adreslerini atla, riziko/sigortalı yer adresini al
+    const are=/(?:^|\s)adres(?:i)?\s*:\s*(.{5,160}?)(?=\s+(?:bina|daire\s+(?:kullanim|brut|yuz)|toplam|bulundu|hasar|ada|parsel|tapu|bagimsiz|sigorta|dask|adres\s+kodu|yapi|kat\b|temina|rizik|sbm|faaliyet|metrekare|enflasyon|dain|riziko|uavt|kullanim|il\s*\/)|$)/gi;
+    let am=null,mm;const ft=fold(text);
+    while((mm=are.exec(ft))){if(!/\*{3}/.test(mm[1])){am=mm;break}}
     if(am){const st=am.index+am[0].length-am[1].length;let a=text.slice(st,st+am[1].length).replace(/\s+/g,' ').trim();if(a.length>=5){
       const lm=/il\s*\/\s*ilce[^:]{0,30}:\s*([^\/\s]+)\/([^\/\s]+)/i.exec(fold(text));
       if(lm){const end=lm.index+lm[0].length;const il=text.slice(end-lm[2].length,end);const ilce=text.slice(end-lm[2].length-1-lm[1].length,end-lm[2].length-1);
@@ -639,10 +697,10 @@ function extractPolicy(raw){
       if(!out.end&&out.start){const gm=/(\d{3})\s*gun\b/.exec(fold(text.slice(si,si+600)));if(gm&&+gm[1]>=360&&+gm[1]<=370)out.end=addDaysISO(out.start,+gm[1])}
     }
   }
-  out.premium=premiumOf(f);
+  out.premium=columnPremium(lines)||premiumOf(f);
   out.commission=commissionOf(f);
   out.kind=kindOf(f);
-  out.customer=columnCustomer(lines)||customerFromLines(lines)||customerOf(text,f);
+  out.customer=lineCustomer(lines)||columnCustomer(lines)||customerFromLines(lines)||customerOf(text,f);
   if(out.customer&&badName(out.customer))out.customer='';
   out.company=companyOf(text,f);
   const fz=fuzzyFields(lines);
