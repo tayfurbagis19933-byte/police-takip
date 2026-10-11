@@ -90,6 +90,16 @@ dialog h3{margin:0 0 8px;font-size:17px}
 .toast{background:#172334;color:#fff;padding:11px 15px;border-radius:12px;font-size:14px;max-width:560px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .toast.err{background:var(--red)}
 @media(max-width:520px){.grid{grid-template-columns:1fr}.field.full{grid-column:auto}.stat strong{font-size:20px}}
+#viewer{position:fixed;inset:0;z-index:70;background:#1f2933;display:flex;flex-direction:column}
+#viewer[hidden]{display:none}
+#viewer .vbar{display:flex;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top) + 8px) 12px 8px;background:var(--navy);color:#fff}
+#viewer .vname{flex:1;min-width:0;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#viewer .vbar button{background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:10px;padding:9px 12px;font:inherit;font-size:14px;font-weight:600}
+#viewer .vbody{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:10px 10px calc(env(safe-area-inset-bottom) + 16px);touch-action:pan-x pan-y pinch-zoom}
+#viewer .vpages{width:100%;margin:0 auto;display:flex;flex-direction:column;gap:10px;align-items:center}
+#viewer .vpages.zoom{width:200%}
+#viewer .vpages canvas,#viewer .vpages img{width:100%;height:auto;background:#fff;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+#viewer .vmsg{color:#e5e7eb;text-align:center;padding:30px 10px;font-size:15px}
 </style>
 </head>
 <body>
@@ -294,6 +304,10 @@ dialog h3{margin:0 0 8px;font-size:17px}
   <input id="dlgInput" hidden>
   <div class="actions" id="dlgBtns"></div>
 </dialog>
+<div id="viewer" hidden role="dialog" aria-label="Belge görüntüleyici">
+  <div class="vbar"><span class="vname" id="vName">Belge</span><button type="button" id="vZoom">Büyüt</button><button type="button" id="vShare">Paylaş</button><button type="button" id="vClose">Kapat</button></div>
+  <div class="vbody" id="vBody"><div class="vpages" id="vPages"></div></div>
+</div>
 <div id="toasts" aria-live="polite"></div>
 
 <script>
@@ -870,19 +884,63 @@ function parseDataURL(u){const m=/^data:([\w.+\/-]+);base64,([\s\S]*)$/.exec(Str
 function extractFile(x){const src=x&&x.file&&x.file.data;if(!src)return null;const p=parseDataURL(src);return p?{name:String(x.file.name||'belge').slice(0,200),type:p.type,buf:p.buf}:null}
 function fileType(f){let t=(f.type||'').toLowerCase();if(!t){const e=(f.name||'').split('.').pop().toLowerCase();t={pdf:'application/pdf',jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',heic:'image/heic',heif:'image/heif',bmp:'image/bmp'}[e]||''}return t}
 function download(name,blob){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),30000)}
+/* Belge görüntüleyici: iPhone ana ekran uygulamasında yeni sekme açılamadığı için belge uygulama içinde gösterilir */
+let viewerFile=null,viewerUrl=null,viewerToken=0;
+function closeViewer(){
+  viewerToken++;$('viewer').hidden=true;$('vPages').innerHTML='';$('vPages').classList.remove('zoom');$('vZoom').textContent='Büyüt';
+  if(viewerUrl){URL.revokeObjectURL(viewerUrl);viewerUrl=null}
+  viewerFile=null;document.body.style.overflow='';
+}
+function vMsg(t){const d=document.createElement('div');d.className='vmsg';d.textContent=t;$('vPages').appendChild(d);return d}
+async function showViewer(f,name){
+  closeViewer();const tok=viewerToken;
+  const type=ALLOWED.has(f.type)?f.type:'application/pdf';
+  viewerFile=new File([f.buf],name||'belge',{type});
+  $('vName').textContent=name||'Belge';$('viewer').hidden=false;document.body.style.overflow='hidden';
+  const box=$('vPages');
+  if(type!=='application/pdf'){
+    viewerUrl=URL.createObjectURL(viewerFile);
+    const img=document.createElement('img');img.alt=name||'Belge';img.src=viewerUrl;
+    img.onerror=()=>{img.remove();vMsg('Bu görüntü biçimi burada gösterilemiyor. "Paylaş" ile açabilirsin.')};
+    box.appendChild(img);return;
+  }
+  const msg=vMsg('Belge açılıyor…');
+  let pdf=null;
+  try{
+    await ensureLib('pdf');
+    pdf=await pdfjsLib.getDocument({data:f.buf.slice(0)}).promise;
+    if(tok!==viewerToken)return;
+    const n=Math.min(pdf.numPages,20),dpr=Math.min(window.devicePixelRatio||1,2.5);
+    const cssW=Math.max(320,Math.min(box.clientWidth||360,900));
+    for(let i=1;i<=n;i++){
+      const page=await pdf.getPage(i);if(tok!==viewerToken)return;
+      const base=page.getViewport({scale:1}),vp=page.getViewport({scale:Math.min(4,(cssW*dpr*1.4)/base.width)});
+      const cv=document.createElement('canvas');cv.width=Math.floor(vp.width);cv.height=Math.floor(vp.height);
+      box.appendChild(cv);
+      await page.render({canvas:cv,canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+      if(i===1)msg.remove();
+    }
+    if(pdf.numPages>n)vMsg(`İlk ${n} sayfa gösteriliyor. Tamamı için "Paylaş".`);
+  }catch(e){
+    if(tok!==viewerToken)return;
+    console.warn('PDF görüntüleme hatası',e);
+    msg.textContent='PDF gösterilemedi'+(navigator.onLine?'':' (ilk açılışta internet gerekir)')+'. "Paylaş" ile Dosyalar\'a kaydedip açabilirsin.';
+  }finally{if(pdf)try{pdf.destroy()}catch{}}
+}
+async function shareViewer(){
+  const f=viewerFile;if(!f)return;
+  try{
+    if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:f.name});return}
+  }catch(e){if(e&&e.name==='AbortError')return}
+  download(f.name,f);
+}
 async function openStoredFile(id){
   const rec=records.find(r=>r.id===id);
   const local=await idbGet('files',id);
   if(!local&&cloudOn())toast('Belge buluttan indiriliyor…');
   const f=local||await getFileRec(id);
   if(!f){toast('Belge bulunamadı'+(cloudOn()?' (bulutta da yok)':''),'err');return}
-  const type=ALLOWED.has(f.type)?f.type:'application/octet-stream';
-  const url=URL.createObjectURL(new Blob([f.buf],{type}));
-  const go=()=>{const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove()};
-  setTimeout(()=>URL.revokeObjectURL(url),300000);
-  if(local){go();return}
-  const a=await ask({title:'Belge hazır',text:(rec&&rec.file?rec.file.name:'Belge'),buttons:[{label:'Kapat',value:'cancel',cls:'secondary'},{label:'Aç',value:'open'}]});
-  if(a.value==='open')go();
+  await showViewer(f,rec&&rec.file?rec.file.name:'Belge');
 }
 
 /* ---------- Listeler ve görünüm ---------- */
@@ -1753,7 +1811,7 @@ async function hashPin(pin,salt){
   const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(salt+':'+pin));
   return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,'0')).join('');
 }
-function lockApp(){document.body.classList.add('locked');$('lock').hidden=false;$('pinInput').value='';$('lockMsg').textContent='';setTimeout(()=>$('pinInput').focus(),50)}
+function lockApp(){closeViewer();document.body.classList.add('locked');$('lock').hidden=false;$('pinInput').value='';$('lockMsg').textContent='';setTimeout(()=>$('pinInput').focus(),50)}
 let pinFails=0,lockedUntil=0,syncTimer=null;
 async function tryUnlock(){
   if(Date.now()<lockedUntil){$('lockMsg').textContent=`Çok fazla deneme. ${Math.ceil((lockedUntil-Date.now())/1000)} sn bekle.`;return}
@@ -1818,6 +1876,8 @@ function updateSettingsUI(){
 
 /* ---------- Olaylar ---------- */
 function bind(){
+  $('vClose').onclick=closeViewer;$('vShare').onclick=shareViewer;$('vZoom').onclick=()=>{const z=$('vPages').classList.toggle('zoom');$('vZoom').textContent=z?'Küçült':'Büyüt'};
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('viewer').hidden)closeViewer()});
   KINDS.forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k==='Trafik'?'Trafik sigortası':k;$('kind').appendChild(o)});
   $('policyForm').addEventListener('submit',onSubmit);
   document.querySelectorAll('#bottomNav button').forEach(b=>b.addEventListener('click',()=>showScreen(b.dataset.go)));
