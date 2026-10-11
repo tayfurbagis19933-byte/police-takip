@@ -106,7 +106,7 @@ dialog h3{margin:0 0 8px;font-size:17px}
 
 <div id="lock" class="lock" hidden>
   <div class="lockbox">
-    <h2>Poliçe Takip</h2>
+    <h2>Poliçe Takip <small style="font-size:11px;font-weight:600;opacity:.6">s.11.10-c</small></h2>
     <p class="muted" style="margin:0">PIN kodunu gir</p>
     <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="8" aria-label="PIN">
     <button id="unlockBtn" type="button">Aç</button>
@@ -449,7 +449,7 @@ function plateOf(text,f){
 function companyOf(text,f){
   let m=/sigorta sirketi\s*:\s*([a-z0-9 .&\-]{3,60}?\ba\.s\.)/.exec(f);
   if(m){const end=m.index+m[0].length;return text.slice(end-m[1].length,end).trim()}
-  const co=COMPANIES.find(([k])=>new RegExp('(?:\\b|(?<=\\.))'+k+'(?:\\b|(?=\\.))').test(f));
+  const co=COMPANIES.find(([k])=>new RegExp('(?:\\b|\\.)'+k+'(?:\\b|(?=\\.))').test(f));
   if(co)return co[1];
   m=/\b([a-z]+ sigorta a\.s\.)/.exec(f);
   if(m)return text.slice(m.index,m.index+m[1].length);
@@ -669,10 +669,11 @@ function extractPolicy(raw){
   if(!(/\d{4}/.test(pn)&&pn.length>=5)){
     pn='';
     // "SBM Poliçe No", "Önceki Poliçe No", "Şirketi Poliçe No" asıl poliçe numarası değildir
-    const re=/(?<!(?:sbm|onceki|eski|sirketi|sirket)\s*)(?:police(?:\s*\/\s*(zeyil|zeyl|yenileme))?\s*(?:no|numarasi|numara)|pol\.?\s*no)\s*[:#.\-]?\s*([a-z0-9][a-z0-9\/\-.]{5,})/g;
+    const re=/(?:police(?:\s*\/\s*(zeyil|zeyl|yenileme))?\s*(?:no|numarasi|numara)|pol\.?\s*no)\s*[:#.\-]?\s*([a-z0-9][a-z0-9\/\-.]{5,})/g;
     let m;
     while((m=re.exec(f))){
       if(!/\d{4}/.test(m[2]))continue;
+      if(/(?:sbm|onceki|eski|sirketi|sirket)\s*$/.test(f.slice(Math.max(0,m.index-12),m.index)))continue;
       const end=m.index+m[0].length;pn=text.slice(end-m[2].length,end).replace(/[.\-\/]+$/,'');
       const sfx=/^\s?\/\s?(\d{1,2})(?![\d])/.exec(text.slice(end));if(sfx&&m[1]!=='yenileme'&&!pn.includes('/'))pn+='/'+sfx[1];
       break;
@@ -935,12 +936,17 @@ async function shareViewer(){
   download(f.name,f);
 }
 async function openStoredFile(id){
-  const rec=records.find(r=>r.id===id);
-  const local=await idbGet('files',id);
-  if(!local&&cloudOn())toast('Belge buluttan indiriliyor…');
-  const f=local||await getFileRec(id);
-  if(!f){toast('Belge bulunamadı'+(cloudOn()?' (bulutta da yok)':''),'err');return}
-  await showViewer(f,rec&&rec.file?rec.file.name:'Belge');
+  const rec=records.find(r=>r.id===id),name=rec&&rec.file?rec.file.name:'Belge';
+  // Görüntüleyiciyi hemen aç: bir şey ters giderse kullanıcı nedenini ekranda görsün
+  closeViewer();$('vName').textContent=name;$('viewer').hidden=false;document.body.style.overflow='hidden';
+  const msg=vMsg('Belge yükleniyor…');
+  try{
+    const local=await idbGet('files',id);
+    if(!local&&cloudOn())msg.textContent='Belge buluttan indiriliyor…';
+    const f=local||await getFileRec(id);
+    if(!f){msg.textContent='Belge bulunamadı'+(cloudOn()?' (bulutta da yok)':' (bu telefonda kayıtlı değil)')+'. Poliçeyi düzenleyip belgeyi yeniden ekleyebilirsin.';return}
+    await showViewer(f,name);
+  }catch(e){msg.textContent='Belge açılamadı: '+((e&&e.message)||e)}
 }
 
 /* ---------- Listeler ve görünüm ---------- */
