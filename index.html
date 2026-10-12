@@ -573,7 +573,7 @@ function lev(a,b){
 }
 const lettersOnly=t=>fold(t).replace(/[^a-z]/g,'');
 const LABEL_WORDS=['adi','soyadi','soyad','unvani','unvan','sigortali','sigortaettiren','musteri','tc','kimlik','no','police','tarihi','tarih','baslangic','bitis','prim','plaka','adres','telefon','nin','bilgileri','bilgisi','indirim','bilgisi','bilgi','paket','network','odenecek','tutar'];
-const CLAUSE_WORDS=new Set(['veya','ile','le','ya','de','da','ki','mi','bu','her','hangi','gibi','icin','olan','olarak','olmasi','olup','tarafindan','birlikte','yasadigi','yasayan','aile','ailesi','ailenin','esi','cocuklari','kisi','kisiler','kisinin','yerlerde','yerde','yerinde','yeri','yerler','fotovoltaik','panel','sistem','sistemi','tesis','tesisat','musterek','muşterek','ortak','ortaklari','ait','durumunda','halinde','hakkinda','kadar','sonra','once','dahil','haric','kapsam','kapsaminda','kapsamindaki','teminat','teminati','teminatlari','hasar','hasari','bedel','bedeli','madde','maddesi','sart','sartlari','genel','kosul','kosullari','sorumluluk','sorumlulugu','mali','zarar','zararlari','esya','esyalari','bina','binasi','isyeri','daire','mesken','sigortalinin','sigortaliya','sigortalilar','ettirenin','bulunan','yapilan','edilen','edilmis','olunan','tum','butun','diger','herhangi','bir','tutar','tutari','oran','orani','yuzde','muafiyet','muafiyeti','klozu','kloz','ek','ekli','beyan','beyani','rizikonun','riziko','adresinde','bulundugu','bulunan','kullanilan','kullanim','amaci','faaliyet','konusu','istisna','istisnalar','dolayi','nedeniyle','sebebiyle','karsi','karsilik','uzere','itibaren','arasinda','icinde','disinda','uzerinde','altinda','sahibi','kiraci','malik','vekil','temsilci','varis','varisleri','lehtar','dain','murtehin']);
+const CLAUSE_WORDS=new Set(['istanbul','izmir','bursa','antalya','kocaeli','konya','adana','gaziantep','mersin','kayseri','eskisehir','tekirdag','sakarya','mahallesi','mah','cad','caddesi','sok','sokak','veya','ile','le','ya','de','da','ki','mi','bu','her','hangi','gibi','icin','olan','olarak','olmasi','olup','tarafindan','birlikte','yasadigi','yasayan','aile','ailesi','ailenin','esi','cocuklari','kisi','kisiler','kisinin','yerlerde','yerde','yerinde','yeri','yerler','fotovoltaik','panel','sistem','sistemi','tesis','tesisat','musterek','muşterek','ortak','ortaklari','ait','durumunda','halinde','hakkinda','kadar','sonra','once','dahil','haric','kapsam','kapsaminda','kapsamindaki','teminat','teminati','teminatlari','hasar','hasari','bedel','bedeli','madde','maddesi','sart','sartlari','genel','kosul','kosullari','sorumluluk','sorumlulugu','mali','zarar','zararlari','esya','esyalari','bina','binasi','isyeri','daire','mesken','sigortalinin','sigortaliya','sigortalilar','ettirenin','bulunan','yapilan','edilen','edilmis','olunan','tum','butun','diger','herhangi','bir','tutar','tutari','oran','orani','yuzde','muafiyet','muafiyeti','klozu','kloz','ek','ekli','beyan','beyani','rizikonun','riziko','adresinde','bulundugu','bulunan','kullanilan','kullanim','amaci','faaliyet','konusu','istisna','istisnalar','dolayi','nedeniyle','sebebiyle','karsi','karsilik','uzere','itibaren','arasinda','icinde','disinda','uzerinde','altinda','sahibi','kiraci','malik','vekil','temsilci','varis','varisleri','lehtar','dain','murtehin']);
 function badName(name){
   const raw=String(name).split(/\s+/).filter(Boolean),toks=raw.map(lettersOnly);
   if(!toks.length)return true;
@@ -783,14 +783,14 @@ function extractPolicy(raw){
 }
 
 /* ---- Dosya adından ipuçları: "AYNUR ÖZKAN AK KONUT POLİÇESİ.pdf" → müşteri "Aynur Özkan", branş "Konut" ---- */
-const FILE_STOP=new Set(['konut','is','yeri','isyeri','dask','deprem','kasko','trafik','saglik','tss','tamamlayici','ozel','ferdi','kaza','seyahat','police','policesi','polices','policeler','sigorta','sigortasi','sigortalari','yenileme','yeni','eski','zeyl','zeyil','zeyli','teklif','teklifi','pdf','scan','scanned','img','image','belge','dosya','kopya','copy','son','guncel','ak','aksigorta','anadolu','axa','allianz','hdi','mapfre','sompo','ray','neova','quick','turkiye','ergo','gulf','groupama','generali','doga','unico','corpus','bereket','ankara','koru','magdeburger','orient','nippon','turk','atlas','gunes','zurich','eureko','halk','ziraat','qnb','bupa','acibadem','katilim','dubai','hepiyi','emlak','katilim','iptal','zorunlu','mali','sorumluluk','imm','ihtiyari','paket','paketi','plus','ekonomik','genis','dar','teminat','whatsapp','image','photo','foto','fotograf','ekran','goruntusu','screenshot']);
+const FILE_STOP=new Set(['plaka','degisiklik','degisikligi','zeyilname','tadilat','adres','ek','konut','is','yeri','isyeri','dask','deprem','kasko','trafik','saglik','tss','tamamlayici','ozel','ferdi','kaza','seyahat','police','policesi','polices','policeler','sigorta','sigortasi','sigortalari','yenileme','yeni','eski','zeyl','zeyil','zeyli','teklif','teklifi','pdf','scan','scanned','img','image','belge','dosya','kopya','copy','son','guncel','ak','aksigorta','anadolu','axa','allianz','hdi','mapfre','sompo','ray','neova','quick','turkiye','ergo','gulf','groupama','generali','doga','unico','corpus','bereket','ankara','koru','magdeburger','orient','nippon','turk','atlas','gunes','zurich','eureko','halk','ziraat','qnb','bupa','acibadem','katilim','dubai','hepiyi','emlak','katilim','iptal','zorunlu','mali','sorumluluk','imm','ihtiyari','paket','paketi','plus','ekonomik','genis','dar','teminat','whatsapp','image','photo','foto','fotograf','ekran','goruntusu','screenshot']);
 function nameFromFile(fname){
   const base=String(fname||'').replace(/\.[a-z0-9]{2,5}$/i,'').replace(/[_+]+/g,' ').replace(/\(\d+\)/g,' ');
   const toks=base.split(/[\s\-–—.,]+/).filter(Boolean);
   const out=[];
   for(const t of toks){
     const ft=lettersOnly(t);
-    if(/\d/.test(t)||!ft||FILE_STOP.has(ft)||ft.length<2){if(out.length)break;else continue}
+    if(/\d/.test(t)||!ft||FILE_STOP.has(ft)||LABEL_WORDS.includes(ft)||ft.length<2){if(out.length)break;else continue}
     if(!/^[A-Za-zÇĞİıÖŞÜçğöşüÂâÎîÛû'&]+$/.test(t)){if(out.length)break;else continue}
     out.push(t);if(out.length>=6)break;
   }
@@ -807,12 +807,21 @@ function kindFromFile(fname){
 }
 const nameToks=n=>new Set(String(n||'').split(/\s+/).map(lettersOnly).filter(t=>t.length>=3));
 const sharesName=(a,b)=>{const A=nameToks(a);for(const t of nameToks(b))if(A.has(t))return true;return false};
+/* Kayıttaki isim yerine dosya adındaki isim önerilsin mi? */
+function preferFileName(old,fn){
+  if(!fn||old===fn)return false;
+  if(suspectName(old)||!sharesName(old,fn))return true;
+  const o=String(old).split(/\s+/).map(lettersOnly).filter(Boolean),n=fn.split(/\s+/).map(lettersOnly).filter(Boolean);
+  if(o.join(' ')===n.join(' '))return true; // yalnızca büyük/küçük harf farkı
+  const extra=o.filter(t=>!n.includes(t));
+  return n.every(t=>o.includes(t))&&extra.length>0&&!extra.some(t=>CO_WORDS.has(t)); // "Songül Bağış İstanbul" → "Songül Bağış"
+}
 const suspectName=n=>!n||/^kontrol:/i.test(n)||/^müşteri\s/i.test(n)||badName(n);
 /* Belge metni + dosya adı birlikte: dosya adındaki isim ve branş, metinden çıkan tahminden önce gelir */
 function fileHints(d,fname){
   const out={...d};
   const fn=nameFromFile(fname),fk=kindFromFile(fname);
-  if(fn&&(suspectName(out.customer)||!sharesName(out.customer,fn)))out.customer=fn;
+  if(fn&&(!out.customer||preferFileName(out.customer,fn)))out.customer=fn;
   if(out.customer&&badName(out.customer)&&!fn)delete out.customer;
   if(fk)out.kind=fk;
   return out;
@@ -1589,7 +1598,7 @@ async function runOCR(){
       if(k==='policyNo'&&!/[0-9]{4}/.test(String(v)))continue;
       if(k==='kind'){if(KINDS.includes(v)&&el.value!==v&&(!kindTouched||fk)){el.value=v;renderExtra();(kindTouched?fixed:filled).push(names[k])}continue}
       if(!el.value){el.value=v;filled.push(names[k])}
-      else if(k==='customer'&&el.value!==v&&(suspectName(el.value)||(nameFromFile(f.name)&&!sharesName(el.value,v)))){el.value=v;fixed.push(names[k])}
+      else if(k==='customer'&&el.value!==v&&(nameFromFile(f.name)?preferFileName(el.value,nameFromFile(f.name)):suspectName(el.value))){el.value=nameFromFile(f.name)||v;fixed.push(names[k])}
     }
     if(d.end&&filled.includes('bitiş'))$('end').dataset.auto='0';
     if(filled.length<3)$('ocrDetails').open=true;
@@ -1612,7 +1621,7 @@ async function fixPlan(r,{read=true,ocr=true,st=()=>{}}={}){
   }
   if(!needDoc)d=fileHints({},fname);
   const cust=d.customer||fn;
-  if(cust&&cust!==r.customer&&(suspectName(r.customer)||(fn&&!sharesName(r.customer,fn))))ch.customer=[r.customer,cust];
+  if(fn?preferFileName(r.customer,fn):(cust&&cust!==r.customer&&suspectName(r.customer)))ch.customer=[r.customer,fn||cust];
   const fk=kindFromFile(fname)||'';
   if(fk&&fk!==r.kind)ch.kind=[r.kind,fk];
   else if(!fk&&r.kind==='Diğer'&&KINDS.includes(d.kind)&&d.kind!=='Diğer')ch.kind=[r.kind,d.kind];
