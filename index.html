@@ -275,14 +275,21 @@ dialog h3{margin:0 0 8px;font-size:17px}
 <div data-screen="rates" hidden>
 <section class="panel">
   <h2>Komisyon oranları</h2>
+  <p class="muted" style="margin-top:0">Her branş için tek bir oran gir. Yeni poliçede komisyon kutusu boşsa prim × oran ile otomatik hesaplanır. Boş bıraktığın branşta hesaplama yapılmaz.</p>
+  <div class="grid" id="kindRates"></div>
+  <div class="actions"><button id="kindRateSave" type="button">Oranları kaydet</button><button id="fillCommBtn" type="button" class="secondary">Komisyonu boş kayıtları hesapla</button></div>
+  <p class="muted" id="fillCommInfo" aria-live="polite"></p>
+  <details style="margin-top:14px"><summary class="muted" style="cursor:pointer;font-weight:700">Şirkete özel farklı oran (isteğe bağlı)</summary>
+  <p class="muted">Bir şirket genel orandan farklı veriyorsa buraya ekle; o şirketin poliçelerinde bu oran kullanılır.</p>
   <div class="grid">
     <div class="field"><label for="rateCo">Şirket</label><input id="rateCo" placeholder="Aksigorta" autocomplete="off"></div>
     <div class="field"><label for="rateKind">Branş</label><select id="rateKind"></select></div>
     <div class="field"><label for="rateVal">Oran (%)</label><input id="rateVal" type="number" step="0.01" min="0" max="100" inputmode="decimal" placeholder="12"></div>
   </div>
-  <div class="actions"><button id="rateSave" type="button">Oranı kaydet</button></div>
+  <div class="actions"><button id="rateSave" type="button" class="secondary">Şirket oranını kaydet</button></div>
   <div id="rateList" class="muted"></div>
-  <p class="muted">Komisyon kutusu boşsa, prim × oran ile otomatik hesaplanır. Oranlar bulut yedeğine de kaydedilir.</p>
+  </details>
+  <p class="muted">Oranlar bulut yedeğine de kaydedilir.</p>
   <p class="muted" id="appVer"></p>
 </section>
 </div>
@@ -465,6 +472,23 @@ function amountAfter(f,labels){
   }
   return '';
 }
+/* Prim: güçlü etiketlerin (ödenecek, brüt, toplam prim, genel toplam) hepsini topla, en büyüğünü al.
+   Böylece net prim, vergi, fon veya taksit tutarı yanlışlıkla prim yazılmaz. */
+function premiumStrong(f){
+  const AMT='(\\d{1,3}(?:[.,]\\d{3})*[.,]\\d{2}|\\d+[.,]\\d{2}|\\d{1,3}(?:[.,]\\d{3})+)';
+  const LAB='(?:odenecek\\s+(?:toplam\\s+)?(?:tutar|prim|miktar)\\w*|toplam\\s+odenecek(?:\\s+(?:tutar|prim)\\w*)?|brut\\s+prim\\w*|toplam\\s+(?:brut\\s+)?prim\\w*|genel\\s+toplam|police\\s+primi|tahsil\\s+edilecek(?:\\s+tutar)?|toplam\\s+tutar|toplam\\s+police\\s+primi|odenecek\\s+toplam)';
+  const re=new RegExp(LAB+'[^0-9]{0,30}?'+AMT+'(?!\\d)','g');
+  let m,best=0;
+  while((m=re.exec(f))){
+    const before=f.slice(Math.max(0,m.index-25),m.index);
+    if(/teminat|limit|bedel|hasar|muafiyet|taksit\s*$/.test(before))continue;
+    const between=m[0].slice(0,m[0].length-m[1].length);
+    if(/taksit|vergi|bsmv|gider|fon\b|komisyon|indirim|tarih/.test(between.replace(/^\S+\s+\S+/,'')))continue;
+    const v=parseAmount(m[1]);
+    if(v>=50&&v<5e6&&v>best)best=v;
+  }
+  return best?String(best):'';
+}
 function premiumOf(f){return amountAfter(f,['brut\\s+prim','toplam\\s+prim','toplam\\s+odenecek','odenecek\\s+(?:tutar|prim)','prim\\s+tutari','genel\\s+toplam','toplam\\s+tutar','tahsilat\\s+tutari','net\\s+prim','primi\\s*:','prim\\s*:'])}
 function commissionOf(f){return amountAfter(f,['komisyon\\s+tutari','komisyon','acente\\s+komisyonu'])}
 
@@ -536,6 +560,7 @@ function monthDates(s){return s.replace(/(\d{1,2})\s+([A-Za-zÇĞİıÖŞÜçğ�
 function prepText(raw){
   let t=fixTurkish(String(raw||'')).replace(/ /g,' ');
   t=monthDates(t);
+  t=t.replace(/(\d)\s+([.,])\s*(\d{2})(?![\d.,])/g,'$1$2$3').replace(/\b(\d{1,3}) (\d{3}[.,]\d{2})(?![\d])/g,'$1.$2');
   return t.replace(/(\d|[./-])[Oo](?=\d|[./-])/g,(m,a)=>a+'0').replace(/(\d)[lI|](?=\d)/g,(m,a)=>a+'1');
 }
 function allDates(f){
@@ -769,7 +794,7 @@ function extractPolicy(raw){
       if(!out.end&&out.start){const gm=/(\d{3})\s*gun\b/.exec(fold(text.slice(si,si+600)));if(gm&&+gm[1]>=360&&+gm[1]<=370)out.end=addDaysISO(out.start,+gm[1])}
     }
   }
-  out.premium=columnPremium(lines)||premiumOf(f);
+  {const cp=Number(columnPremium(lines))||0,sp=Number(premiumStrong(f))||0,b=Math.max(cp,sp);out.premium=b?String(b):premiumOf(f)}
   out.commission=commissionOf(f);
   out.kind=kindOf(f);
   out.customer=lineCustomer(lines)||columnCustomer(lines)||customerFromLines(lines)||customerOf(text,f);
@@ -1269,7 +1294,7 @@ function setFile(f){
   runOCR();
 }
 const APP_VER='v14';
-const rateFor=(company,kind)=>{const v=(settings.rates||{})[ckey(company,kind)];return v>0?v:0};
+const rateFor=(company,kind)=>{const R=settings.rates||{};if(lkey(company)){const v=R[ckey(company,kind)];if(v>0)return v}const g=R[ckey('',kind)];return g>0?g:0};
 const rateCommission=(company,kind,premium)=>{const pc=rateFor(company,kind);return pc&&premium>0?Math.round(premium*pc)/100:''};
 async function pushLearn(){
   if(!cloudOn())return;
@@ -1284,12 +1309,36 @@ async function pullLearn(){
     settings.learned={...(j.learned||{}),...(settings.learned||{})};
     settings.rates={...(j.rates||{}),...(settings.rates||{})};
     await saveSettings();
+    try{renderRates()}catch{}
   }catch{}
 }
+function renderKindRates(){
+  const box=$('kindRates');if(!box)return;const R=settings.rates||{};
+  box.innerHTML=KINDS.map((k,i)=>{const v=R[ckey('',k)];return `<div class="field"><label for="kr${i}">${esc(k==='Trafik'?'Trafik sigortası':k)} (%)</label><input id="kr${i}" data-kind="${esc(k)}" type="number" step="0.01" min="0" max="100" inputmode="decimal" placeholder="Örn. 10" value="${v>0?esc(v):''}"></div>`}).join('');
+}
+async function saveKindRates(){
+  const R={...(settings.rates||{})};let bad='';
+  document.querySelectorAll('#kindRates input').forEach(el=>{
+    const k=el.dataset.kind,raw=String(el.value).trim(),v=parseFloat(raw.replace(',','.'));
+    if(!raw){delete R[ckey('',k)];return}
+    if(!(v>0&&v<=100)){bad=k;return}
+    R[ckey('',k)]=v;
+  });
+  if(bad){toast(`${bad} oranı 0 ile 100 arasında olmalı.`,'err');return}
+  settings.rates=R;await saveSettings();pushLearn();renderKindRates();renderRates();toast('Branş oranları kaydedildi.');
+}
+async function fillCommissions(){
+  const now=new Date().toISOString();
+  const list=records.filter(r=>r.status!=='cancelled'&&r.commission===''&&Number(r.premium)>0).map(r=>{const c=rateCommission(r.company,r.kind,Number(r.premium));return c===''?null:{...r,commission:c,updated:now}}).filter(Boolean);
+  if(!list.length){$('fillCommInfo').textContent='Hesaplanacak kayıt yok. Komisyonu boş ve primi girilmiş kayıtlar için önce branş oranlarını kaydet.';return}
+  if(!await yesNo(`${list.length} kaydın komisyonu branş oranlarına göre hesaplanıp yazılacak. Komisyonu dolu olan kayıtlara dokunulmaz.`,'Hesapla'))return;
+  try{await commitChunks(list,[]);render();$('fillCommInfo').textContent=`${list.length} kaydın komisyonu hesaplandı.`;toast('Komisyonlar hesaplandı.')}catch(e){toast('Kaydedilemedi: '+dbError(e),'err')}
+}
 function renderRates(){
+  renderKindRates();
   const el=$('rateList');if(!el)return;
-  const e=Object.entries(settings.rates||{});
-  el.innerHTML=e.length?e.map(([k,v])=>`<div style="margin:6px 0">${esc(k.replace('|',' · '))}: %${esc(v)} <button type="button" class="secondary" data-rk="${esc(k)}">Sil</button></div>`).join(''):'Henüz komisyon oranı yok.';
+  const e=Object.entries(settings.rates||{}).filter(([k])=>!k.startsWith('|'));
+  el.innerHTML=e.length?e.map(([k,v])=>`<div style="margin:6px 0">${esc(k.replace('|',' · '))}: %${esc(v)} <button type="button" class="secondary" data-rk="${esc(k)}">Sil</button></div>`).join(''):'Şirkete özel oran yok.';
 }
 async function saveRate(){
   const co=$('rateCo').value.trim(),kind=$('rateKind').value,v=parseFloat(String($('rateVal').value).replace(',','.'));
@@ -1630,6 +1679,7 @@ async function fixPlan(r,{read=true,ocr=true,st=()=>{}}={}){
     if((k==='start'||k==='end')&&!isDate(v))continue;
     if((k==='premium'||k==='commission')&&!(Number(v)>0))continue;
     if(r[k]===''||r[k]==null)ch[k]=[r[k],k==='plate'?String(v).toUpperCase():v];
+    else if(k==='premium'&&Math.abs(Number(r.premium)-Number(v))>=1)ch[k]=[r[k],v];
   }
   if(ch.end&&r.start&&ch.end[1]<=r.start)delete ch.end;
   return ch;
@@ -2221,6 +2271,7 @@ async function storageInfo(){
   $('storageInfo').textContent=t;
 }
 function updateSettingsUI(){
+  try{renderRates()}catch{}
   $('warningDays').value=String(settings.warningDays);$('agencyEmail').value=settings.agencyEmail||'';$('serverUrl').value=settings.serverUrl||'';$('serverToken').value=settings.serverToken||'';updateSyncInfo();
   $('sbUrl').value=settings.sbUrl||'';$('sbKey').value=settings.sbKey||'';$('sbEmail').value=settings.sbEmail||'';
   const on=cloudOn();
@@ -2245,6 +2296,8 @@ function bind(){
   document.querySelectorAll('#bottomNav button').forEach(b=>b.addEventListener('click',()=>showScreen(b.dataset.go)));
   showScreen('list');
   $('rateKind').innerHTML=KINDS.map(k=>`<option>${esc(k)}</option>`).join('');
+  $('kindRateSave').onclick=()=>saveKindRates().catch(e=>toast('Kaydedilemedi: '+dbError(e),'err'));
+  $('fillCommBtn').onclick=()=>fillCommissions().catch(e=>toast('Hata: '+(e.message||e),'err'));
   $('rateSave').addEventListener('click',saveRate);
   $('rateList').addEventListener('click',async e=>{const k=e.target&&e.target.dataset&&e.target.dataset.rk;if(!k)return;const n={...(settings.rates||{})};delete n[k];settings.rates=n;await saveSettings();pushLearn();renderRates()});
   $('appVer').textContent='Sürüm: '+APP_VER;
