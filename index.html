@@ -215,6 +215,13 @@ dialog h3{margin:0 0 8px;font-size:17px}
   <div class="actions" style="margin-top:0"><button id="csvImportBtn" type="button" class="secondary">Excel/CSV'den içe aktar</button><input id="csvFile" type="file" accept=".csv,text/csv,text/plain" hidden></div>
   <p class="muted">İlk satır başlık olmalı: Müşteri, Telefon, Plaka, Branş, Şirket, Poliçe No, Başlangıç, Bitiş, Prim, Komisyon. Uygulamanın "Excel'e aktar" dosyasıyla aynı biçimdir. Excel'de "CSV olarak kaydet" yeterli.</p>
 </section>
+<section class="panel">
+  <h2>Kayıtlardaki hataları düzelt</h2>
+  <p class="muted" style="margin-top:0">Yanlış okunmuş müşteri adlarını ve branşları belgelerin dosya adına ve içeriğine göre düzeltir, boş kalan alanları belgeden doldurur. Önce değişiklik listesini gösterir, onaylarsan uygular.</p>
+  <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="fixDeep" checked style="width:auto;min-height:0"> Belgelerin içini de oku (daha yavaş, daha çok alan düzeltir)</label>
+  <div class="actions"><button id="fixAllBtn" type="button">Hataları bul ve düzelt</button></div>
+  <p class="muted" id="fixInfo" aria-live="polite"></p>
+</section>
 
 </div>
 <div data-screen="backup" hidden>
@@ -560,9 +567,16 @@ function lev(a,b){
 }
 const lettersOnly=t=>fold(t).replace(/[^a-z]/g,'');
 const LABEL_WORDS=['adi','soyadi','soyad','unvani','unvan','sigortali','sigortaettiren','musteri','tc','kimlik','no','police','tarihi','tarih','baslangic','bitis','prim','plaka','adres','telefon','nin','bilgileri','bilgisi','indirim','bilgisi','bilgi','paket','network','odenecek','tutar'];
+const CLAUSE_WORDS=new Set(['veya','ile','le','ya','de','da','ki','mi','bu','her','hangi','gibi','icin','olan','olarak','olmasi','olup','tarafindan','birlikte','yasadigi','yasayan','aile','ailesi','ailenin','esi','cocuklari','kisi','kisiler','kisinin','yerlerde','yerde','yerinde','yeri','yerler','fotovoltaik','panel','sistem','sistemi','tesis','tesisat','musterek','muşterek','ortak','ortaklari','ait','durumunda','halinde','hakkinda','kadar','sonra','once','dahil','haric','kapsam','kapsaminda','kapsamindaki','teminat','teminati','teminatlari','hasar','hasari','bedel','bedeli','madde','maddesi','sart','sartlari','genel','kosul','kosullari','sorumluluk','sorumlulugu','mali','zarar','zararlari','esya','esyalari','bina','binasi','isyeri','daire','mesken','sigortalinin','sigortaliya','sigortalilar','ettirenin','bulunan','yapilan','edilen','edilmis','olunan','tum','butun','diger','herhangi','bir','tutar','tutari','oran','orani','yuzde','muafiyet','muafiyeti','klozu','kloz','ek','ekli','beyan','beyani','rizikonun','riziko','adresinde','bulundugu','bulunan','kullanilan','kullanim','amaci','faaliyet','konusu','istisna','istisnalar','dolayi','nedeniyle','sebebiyle','karsi','karsilik','uzere','itibaren','arasinda','icinde','disinda','uzerinde','altinda','sahibi','kiraci','malik','vekil','temsilci','varis','varisleri','lehtar','dain','murtehin']);
 function badName(name){
-  const toks=String(name).split(/\s+/).map(lettersOnly);
-  return toks.some(t=>t.length>=2&&LABEL_WORDS.some(w=>t===w||(w.length>=5&&t.length>=5&&lev(t,w)<=1)));
+  const raw=String(name).split(/\s+/).filter(Boolean),toks=raw.map(lettersOnly);
+  if(!toks.length)return true;
+  const isCo=toks.some(t=>CO_WORDS.has(t));
+  if(toks.some(t=>t.length>=2&&LABEL_WORDS.some(w=>t===w||(w.length>=5&&t.length>=5&&lev(t,w)<=1))))return true;
+  const STRONG=['veya','ile','le','ya','birlikte','yasadigi','yasayan','icin','olan','olarak','olup','tarafindan','halinde','durumunda','kadar','sigortalinin','sigortaliya','ettirenin','herhangi','kapsaminda','dolayi','nedeniyle','itibaren','uzere'];
+  if(toks.some(t=>isCo?STRONG.includes(t):CLAUSE_WORDS.has(t)))return true;
+  if(toks.some(t=>t==='ve')&&!isCo)return true;
+  return false;
 }
 /* [etiket, öncelik]: OCR hatalarına (Joplam, Poligeno, Soyadh ...) karşı bulanık eşleşir */
 const LAB_SETS={
@@ -759,6 +773,42 @@ function extractPolicy(raw){
   for(const k of ['policyNo','customer','start','end','premium','commission','plate'])if(!out[k]&&fz[k])out[k]=fz[k];
   if(out.start&&out.end&&out.end<=out.start){const a=fz.start,b=fz.end;if(a&&b&&b>a){out.start=a;out.end=b}else delete out.end}
   for(const k of Object.keys(out))if(!out[k])delete out[k];
+  return out;
+}
+
+/* ---- Dosya adından ipuçları: "AYNUR ÖZKAN AK KONUT POLİÇESİ.pdf" → müşteri "Aynur Özkan", branş "Konut" ---- */
+const FILE_STOP=new Set(['konut','is','yeri','isyeri','dask','deprem','kasko','trafik','saglik','tss','tamamlayici','ozel','ferdi','kaza','seyahat','police','policesi','polices','policeler','sigorta','sigortasi','sigortalari','yenileme','yeni','eski','zeyl','zeyil','zeyli','teklif','teklifi','pdf','scan','scanned','img','image','belge','dosya','kopya','copy','son','guncel','ak','aksigorta','anadolu','axa','allianz','hdi','mapfre','sompo','ray','neova','quick','turkiye','ergo','gulf','groupama','generali','doga','unico','corpus','bereket','ankara','koru','magdeburger','orient','nippon','turk','atlas','gunes','zurich','eureko','halk','ziraat','qnb','bupa','acibadem','katilim','dubai','hepiyi','emlak','katilim','iptal','zorunlu','mali','sorumluluk','imm','ihtiyari','paket','paketi','plus','ekonomik','genis','dar','teminat','whatsapp','image','photo','foto','fotograf','ekran','goruntusu','screenshot']);
+function nameFromFile(fname){
+  const base=String(fname||'').replace(/\.[a-z0-9]{2,5}$/i,'').replace(/[_+]+/g,' ').replace(/\(\d+\)/g,' ');
+  const toks=base.split(/[\s\-–—.,]+/).filter(Boolean);
+  const out=[];
+  for(const t of toks){
+    const ft=lettersOnly(t);
+    if(/\d/.test(t)||!ft||FILE_STOP.has(ft)||ft.length<2){if(out.length)break;else continue}
+    if(!/^[A-Za-zÇĞİıÖŞÜçğöşüÂâÎîÛû'&]+$/.test(t)){if(out.length)break;else continue}
+    out.push(t);if(out.length>=6)break;
+  }
+  if(!out.length)return '';
+  const name=out.map(t=>/^(a\.ş\.?|ltd\.?|şti\.?)$/i.test(t)?t.toLocaleUpperCase('tr'):tcase(t)).join(' ');
+  if(name.replace(/\s/g,'').length<3)return '';
+  return name;
+}
+function kindFromFile(fname){
+  const f=' '+fold(String(fname||'').replace(/\.[a-z0-9]{2,5}$/i,'')).replace(/[_\-.]+/g,' ')+' ';
+  const rules=[[/\bdask\b|zorunlu deprem/,'DASK'],[/\bkasko\b/,'Kasko'],[/\btrafik\b|\bzmms\b/,'Trafik'],[/\bis ?yeri\b|\bisyeri\b/,'İş yeri'],[/\bkonut\b/,'Konut'],[/\bsaglik\b|\btss\b|tamamlayici/,'Sağlık'],[/ferdi kaza/,'Ferdi kaza'],[/seyahat/,'Seyahat']];
+  for(const [re,k] of rules)if(re.test(f))return k;
+  return '';
+}
+const nameToks=n=>new Set(String(n||'').split(/\s+/).map(lettersOnly).filter(t=>t.length>=3));
+const sharesName=(a,b)=>{const A=nameToks(a);for(const t of nameToks(b))if(A.has(t))return true;return false};
+const suspectName=n=>!n||/^kontrol:/i.test(n)||/^müşteri\s/i.test(n)||badName(n);
+/* Belge metni + dosya adı birlikte: dosya adındaki isim ve branş, metinden çıkan tahminden önce gelir */
+function fileHints(d,fname){
+  const out={...d};
+  const fn=nameFromFile(fname),fk=kindFromFile(fname);
+  if(fn&&(suspectName(out.customer)||!sharesName(out.customer,fn)))out.customer=fn;
+  if(out.customer&&badName(out.customer)&&!fn)delete out.customer;
+  if(fk)out.kind=fk;
   return out;
 }
 
@@ -1076,7 +1126,7 @@ ${r.file?`<div class="filelink">Belge: ${esc(r.file.name)} · <button class="lin
 ${ph?`<a class="btn small secondary" href="tel:+${ph}">Ara</a><a class="btn small secondary" target="_blank" rel="noopener" href="https://wa.me/${ph}?text=${encodeURIComponent(msg)}">WhatsApp</a>`:''}
 <button class="small secondary" data-act="edit">Düzenle</button>
 ${act?'<button class="small" data-act="renew">Yenile</button>':'<button class="small secondary" data-act="activate">Aktife al</button>'}
-<details class="more"><summary>Diğer</summary><div class="actions"><button class="small secondary" data-act="ics">Takvime ekle</button>${act?'<button class="small danger" data-act="cancel">İptal edildi</button>':''}<button class="small danger" data-act="delete">Sil</button></div></details>
+<details class="more"><summary>Diğer</summary><div class="actions">${r.file?'<button class="small secondary" data-act="reread">Belgeyi tekrar oku</button>':''}<button class="small secondary" data-act="ics">Takvime ekle</button>${act?'<button class="small danger" data-act="cancel">İptal edildi</button>':''}<button class="small danger" data-act="delete">Sil</button></div></details>
 </div></article>`;
 }
 function customersHTML(q,src=records){
@@ -1441,7 +1491,7 @@ async function readDocument(f,{ocr=true,setStatus=()=>{}}={}){
   if(!ocr)return[''];
   return[await ocrPhoto(f,st)];
 }
-const extractFromParts=parts=>applyLearned(parts,mergeDocs(parts.map(extractPolicy)));
+const extractFromParts=(parts,fname)=>{const d=applyLearned(parts,mergeDocs(parts.map(extractPolicy)));return fname?fileHints(d,fname):d};
 /* ---- Öğrenilen etiketler: kullanıcı düzeltince, değerin önündeki etiket şirkete göre saklanır ---- */
 const LEARN_FIELDS=['customer','policyNo','premium','commission','start','end','plate'];
 const lkey=c=>fold(String(c||'')).replace(/[^a-z0-9]+/g,' ').trim();
@@ -1505,22 +1555,91 @@ async function runOCR(){
     const parts=await readDocument(f,{ocr:true,setStatus:t=>{$('ocrStatus').textContent=t}});
     const text=parts.join('\n');lastDocText=text;
     $('ocrText').textContent=text.trim().slice(0,6000);$('ocrDetails').open=false;
-    const d=extractFromParts(parts),filled=[];
+    const d=extractFromParts(parts,f.name),filled=[],fixed=[];
     const names={customer:'müşteri',phone:'telefon',plate:'plaka',kind:'branş',company:'şirket',policyNo:'poliçe no',start:'başlangıç',end:'bitiş',premium:'prim',commission:'komisyon'};
+    const fk=kindFromFile(f.name);
     for(const [k,v] of Object.entries(d)){
       const el=$(k);if(!el)continue;
       if((k==='start'||k==='end')&&!isDate(v))continue;
       if((k==='premium'||k==='commission')&&(!Number.isFinite(Number(v))||Number(v)<=0))continue;
       if(k==='policyNo'&&!/[0-9]{4}/.test(String(v)))continue;
-      if(k==='kind'){if(!kindTouched&&KINDS.includes(v)){el.value=v;renderExtra();filled.push(names[k])}continue}
+      if(k==='kind'){if(KINDS.includes(v)&&el.value!==v&&(!kindTouched||fk)){el.value=v;renderExtra();(kindTouched?fixed:filled).push(names[k])}continue}
       if(!el.value){el.value=v;filled.push(names[k])}
+      else if(k==='customer'&&el.value!==v&&(suspectName(el.value)||(nameFromFile(f.name)&&!sharesName(el.value,v)))){el.value=v;fixed.push(names[k])}
     }
     if(d.end&&filled.includes('bitiş'))$('end').dataset.auto='0';
     if(filled.length<3)$('ocrDetails').open=true;
     const missing=['customer','policyNo','start','end','premium'].filter(k=>!$(k).value).map(k=>names[k]);
-    $('ocrStatus').textContent=(filled.length?`Doldurulan alanlar: ${filled.join(', ')}. `:'Boş alanlara güvenilir eşleşme bulunamadı. ')+(missing.length?`Eksik kalan: ${missing.join(', ')}. `:'')+'Kaydetmeden önce belgeyle karşılaştır; "Okunan metin" bölümünden değerleri kopyalayabilirsin.';
+    $('ocrStatus').textContent=(fixed.length?`Düzeltilen: ${fixed.join(', ')}. `:'')+(filled.length?`Doldurulan alanlar: ${filled.join(', ')}. `:fixed.length?'':'Boş alanlara güvenilir eşleşme bulunamadı. ')+(missing.length?`Eksik kalan: ${missing.join(', ')}. `:'')+'Kaydetmeden önce belgeyle karşılaştır; "Okunan metin" bölümünden değerleri kopyalayabilirsin.';
   }catch(e){$('ocrStatus').textContent='Okuma başarısız: '+(e.message||e)}
   finally{$('ocrBtn').disabled=false;stopOcrWorker()}
+}
+
+/* ---------- Kayıtlı belgeyi tekrar okuyup hataları düzeltme ---------- */
+const FIX_NAMES={customer:'Müşteri',kind:'Branş',policyNo:'Poliçe no',start:'Başlangıç',end:'Bitiş',premium:'Prim',company:'Şirket',plate:'Plaka/adres',phone:'Telefon',commission:'Komisyon'};
+async function fixPlan(r,{read=true,ocr=true,st=()=>{}}={}){
+  const fname=r.file?r.file.name:'',ch={};
+  let d={};
+  const fn=nameFromFile(fname);
+  const needDoc=read&&r.file&&(!fn||suspectName(r.customer)||!r.policyNo||!r.end||!r.start||r.premium===''||!r.company);
+  if(needDoc){
+    const st0=await getFileRec(r.id);
+    if(st0){const file=new File([st0.buf],fname||'belge',{type:st0.type});const parts=await readDocument(file,{ocr,setStatus:st});d=extractFromParts(parts,fname)}
+  }
+  if(!needDoc)d=fileHints({},fname);
+  const cust=d.customer||fn;
+  if(cust&&cust!==r.customer&&(suspectName(r.customer)||(fn&&!sharesName(r.customer,fn))))ch.customer=[r.customer,cust];
+  const fk=kindFromFile(fname)||'';
+  if(fk&&fk!==r.kind)ch.kind=[r.kind,fk];
+  else if(!fk&&r.kind==='Diğer'&&KINDS.includes(d.kind)&&d.kind!=='Diğer')ch.kind=[r.kind,d.kind];
+  for(const k of ['policyNo','start','end','premium','company','plate','phone','commission']){
+    const v=d[k];if(v==null||v==='')continue;
+    if((k==='start'||k==='end')&&!isDate(v))continue;
+    if((k==='premium'||k==='commission')&&!(Number(v)>0))continue;
+    if(r[k]===''||r[k]==null)ch[k]=[r[k],k==='plate'?String(v).toUpperCase():v];
+  }
+  if(ch.end&&r.start&&ch.end[1]<=r.start)delete ch.end;
+  return ch;
+}
+function applyPlan(r,ch,now){
+  const m={...r,updated:now};
+  for(const [k,[,v]] of Object.entries(ch))m[k]=(k==='premium'||k==='commission')?num(v):v;
+  if(m.review&&m.customer&&!suspectName(m.customer)&&m.policyNo&&isDate(m.end))m.review=false;
+  return m;
+}
+const planText=ch=>Object.entries(ch).map(([k,[o,n]])=>`${FIX_NAMES[k]||k}: ${o===''||o==null?'(boş)':(k==='start'||k==='end')?fmtDate(o):o} → ${(k==='start'||k==='end')?fmtDate(n):(k==='premium'||k==='commission')?money(num(n))+' TL':n}`).join('\n');
+async function rereadOne(r){
+  if(!r.file){toast('Bu kayıtta belge yok.','err');return}
+  toast('Belge okunuyor…');
+  let ch;
+  try{ch=await fixPlan(r,{read:true,ocr:true,st:t=>{}})}catch(e){toast('Belge okunamadı: '+(e.message||e),'err');return}
+  finally{try{stopOcrWorker()}catch{}}
+  if(!Object.keys(ch).length){toast('Belgeyle kayıt uyumlu, düzeltilecek bir şey bulunamadı.');return}
+  if(!await yesNo(`"${r.customer}" kaydında şu değişiklikler yapılacak:\n\n${planText(ch)}\n\nUygulansın mı?`,'Düzelt'))return;
+  try{await commit({put:[applyPlan(r,ch,new Date().toISOString())]});render();toast('Kayıt düzeltildi.')}catch(e){toast('Kaydedilemedi: '+dbError(e),'err')}
+}
+let fixRunning=false;
+async function fixAll(){
+  if(fixRunning)return;
+  const deep=$('fixDeep').checked;
+  const list=records.filter(r=>r.file&&r.status!=='cancelled');
+  if(!list.length){toast('Belgesi olan kayıt yok.','err');return}
+  fixRunning=true;$('fixAllBtn').disabled=true;$('fixInfo').textContent='';
+  const plans=[];
+  try{
+    for(let i=0;i<list.length;i++){
+      const r=list[i],lab=`${i+1}/${list.length}: ${r.customer}`;
+      $('fixInfo').textContent=lab;
+      try{const ch=await fixPlan(r,{read:deep,ocr:false,st:t=>{$('fixInfo').textContent=lab+' – '+t}});if(Object.keys(ch).length)plans.push([r,ch])}catch{}
+    }
+  }finally{fixRunning=false;$('fixAllBtn').disabled=false}
+  if(!plans.length){$('fixInfo').textContent='Düzeltilecek kayıt bulunamadı.';return}
+  const sample=plans.slice(0,8).map(([r,ch])=>`• ${r.customer}\n  ${planText(ch).replace(/\n/g,'\n  ')}`).join('\n');
+  $('fixInfo').textContent=`${plans.length} kayıtta düzeltme bulundu.`;
+  if(!await yesNo(`${plans.length} kayıtta düzeltme bulundu:\n\n${sample}${plans.length>8?`\n… ve ${plans.length-8} kayıt daha`:''}\n\nHepsi uygulansın mı?`,'Hepsini düzelt'))return;
+  const now=new Date().toISOString();
+  try{await commitChunks(plans.map(([r,ch])=>applyPlan(r,ch,now)),[]);render();$('fixInfo').textContent=`${plans.length} kayıt düzeltildi.`;toast(`${plans.length} kayıt düzeltildi.`)}
+  catch(e){toast('Kaydedilemedi: '+dbError(e),'err')}
 }
 
 /* ---------- Toplu yükleme ve CSV içe aktarma ---------- */
@@ -1602,7 +1721,7 @@ async function bulkImport(fileList){
         let parts,readErr='';
         try{parts=await readDocument(f,{ocr,setStatus:t=>{$('bulkInfo').textContent=label+' – '+t+' ('+stat()+')'}})}
         catch(e){parts=[''];readErr=String((e&&e.message)||e).slice(0,160)}
-        const d=extractFromParts(parts),now=new Date().toISOString(),type0=fileType(f);
+        const d=extractFromParts(parts,f.name),now=new Date().toISOString(),type0=fileType(f);
         const kind=KINDS.includes(d.kind)?d.kind:'Diğer';
         const key=d.policyNo?trLower(d.policyNo)+'|'+kind:'';
         const z=zeylInfo((parts||[]).join('\n'));
@@ -1687,6 +1806,7 @@ async function onListClick(e){
   const id=card.dataset.id,r=records.find(x=>x.id===id);if(!r)return;
   if(act==='edit')startEdit(r);
   else if(act==='renew')startRenew(r);
+  else if(act==='reread'){b.disabled=true;try{await rereadOne(r)}finally{b.disabled=false}}
   else if(act==='file')openStoredFile(id).catch(err=>toast('Belge açılamadı: '+dbError(err),'err'));
   else if(act==='ics')download(`police-${r.id.slice(0,8)}.ics`,new Blob([buildICS([r],settings.warningDays)],{type:'text/calendar;charset=utf-8'}));
   else if(act==='activate'){
@@ -2064,6 +2184,7 @@ function bind(){
   renderRates();
   $('resetBtn').onclick=reset;
   $('kind').addEventListener('change',()=>{kindTouched=true;renderExtra()});
+  $('fixAllBtn').onclick=()=>fixAll().catch(e=>{toast('Düzeltme durdu: '+(e.message||e),'err')});
   $('branches').addEventListener('click',e=>{const b=e.target.closest('.branch');if(!b)return;settings.branch=b.dataset.branch;saveSettings().catch(()=>{});if(!$('editId').value&&!$('renewFrom').value&&!$('customer').value.trim()){const g=GROUPS.find(x=>x.k===settings.branch);if(g&&g.kinds){$('kind').value=g.kinds[0];renderExtra()}}render()});
   $('start').addEventListener('change',()=>{const s=$('start').value;if(isDate(s)&&(!$('end').value||$('end').dataset.auto==='1')){$('end').value=addYear(s);$('end').dataset.auto='1'}});
   $('end').addEventListener('input',()=>{$('end').dataset.auto='0'});
