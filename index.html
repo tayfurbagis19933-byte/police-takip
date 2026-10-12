@@ -222,6 +222,12 @@ dialog h3{margin:0 0 8px;font-size:17px}
   <div class="actions"><button id="fixAllBtn" type="button">Hataları bul ve düzelt</button></div>
   <p class="muted" id="fixInfo" aria-live="polite"></p>
 </section>
+<section class="panel">
+  <h2>Yanlışlıkla yüklenen teklifler</h2>
+  <p class="muted" style="margin-top:0">Kayıtlı belgeleri tarar, poliçe değil teklif olanları listeler. Silmek ya da Kontrol sekmesine almak senin onayınla yapılır.</p>
+  <div class="actions"><button id="quoteScanBtn" type="button" class="secondary">Teklifleri bul</button></div>
+  <p class="muted" id="quoteMsg" aria-live="polite"></p>
+</section>
 
 </div>
 <div data-screen="backup" hidden>
@@ -812,6 +818,21 @@ function fileHints(d,fname){
   return out;
 }
 
+/* ---- Teklif mi poliçe mi? Teklifse sebebini döndürür, poliçeyse boş ---- */
+function quoteInfo(raw,fname){
+  const fn=' '+fold(String(fname||'')).replace(/[_\-.]+/g,' ')+' ';
+  if(/\bteklif/.test(fn))return 'dosya adında "teklif" geçiyor';
+  const f=fold(prepText(raw||'')).replace(/\s+/g,' ');
+  if(!f.trim())return '';
+  if(/police\s+(?:niteliginde\s+)?degildir|bu\s+(?:belge|dokuman|form)\s+(?:bir\s+)?(?:sigorta\s+)?teklif/.test(f))return 'belgede poliçe olmadığı yazıyor';
+  const hasPolNo=/(?:police\s*(?:no|numarasi)|pol\.?\s*no)\s*[:#.\-]?\s*[a-z]{0,3}[\s\-]?\d{4,}/.test(f);
+  if(hasPolNo)return '';
+  const head=f.slice(0,900);
+  if(/(?:sigorta|kasko|trafik|konut|dask|saglik|isyeri|is\s+yeri|fiyat)\s+teklif|teklif\s+(?:formu|belgesi|ozeti|detay\w*|bilgi\w*|tarihi|no\b|numarasi)|teklif\s+gecerlilik|teklifin\s+gecerlilik/.test(head))return 'belgenin başlığında "teklif" yazıyor, poliçe numarası yok';
+  if(/teklif\s+gecerlilik|teklifin\s+gecerlilik|teklif\s+son\s+gecerlilik/.test(f))return 'teklif geçerlilik tarihi var, poliçe numarası yok';
+  return '';
+}
+
 /* ---- Zeyl (ek belge) tanıma ve aynı poliçeyi bulma ---- */
 /* Poliçe numarasının çekirdeği: boşluklar atılır, sondaki zeyl/yenileme ekleri ("/1", "-0-1") kesilir */
 function polBase(no){
@@ -928,7 +949,7 @@ function csvToRecords(text){
 const OLD_KEY='policeTakip.personal.v2';
 const FIELDS=['customer','phone','plate','kind','company','policyNo','start','end','premium','commission','notes','followStatus','followUpDate'];
 const $=id=>document.getElementById(id);
-let extraCache={};
+let extraCache={},quoteWarn='';
 let lastDocText='',db=null,records=[],tab='active',currentFile=null,removeFile=false,kindTouched=false,snoozeBackup=false,hiddenAt=0,deferredPrompt=null;
 const defaults={learned:{},rates:{},warningDays:10,agencyEmail:'',lastBackup:0,lastNotified:'',notify:false,pin:null,migrated:false,serverUrl:'',serverToken:'',lastSync:0,sbUrl:'https://ockkfgtfajshylvfwsmd.supabase.co',sbKey:'sb_publishable_0EGEQ8JkvDmQas9rlg0i5A_AEfuO8o2',sbEmail:'',sbSession:null,lastCloud:0};
 const PAGE=40;let shown=PAGE,lastView='';
@@ -1205,7 +1226,7 @@ function reset(){
   $('formTitle').textContent='Yeni poliçe ekle';$('fileInfo').textContent='Dosya seçilmedi.';
   $('ocrStatus').textContent='Belge seçince otomatik okunur; yalnızca boş alanlar doldurulur. Tekrar okumak için düğmeye bas.';$('ocrText').textContent='';
   $('removeFileBtn').hidden=true;$('end').dataset.auto='';
-  $('file').value='';$('cam').value='';currentFile=null;removeFile=false;kindTouched=false;lastDocText='';
+  $('file').value='';$('cam').value='';currentFile=null;removeFile=false;kindTouched=false;lastDocText='';quoteWarn='';
   const g=GROUPS.find(x=>x.k===curBranch());if(g&&g.kinds)$('kind').value=g.kinds[0];
   renderExtra({});
 }
@@ -1276,6 +1297,7 @@ function showScreen(name){
 }
 async function onSubmit(e){
   e.preventDefault();
+  if(quoteWarn&&!$('editId').value&&!await yesNo(`Seçtiğin belge teklif gibi görünüyor (${quoteWarn}). Teklifler poliçe listesine girmemeli.\n\nYine de kaydedilsin mi?`,'Yine de kaydet',true))return;
   const id=$('editId').value,from=$('renewFrom').value,old=id?records.find(x=>x.id===id):null;
   const customer=$('customer').value.trim(),start=$('start').value,end=$('end').value;
   if(!customer){toast('Müşteri adı gerekli.','err');$('customer').focus();return}
@@ -1555,6 +1577,8 @@ async function runOCR(){
     const parts=await readDocument(f,{ocr:true,setStatus:t=>{$('ocrStatus').textContent=t}});
     const text=parts.join('\n');lastDocText=text;
     $('ocrText').textContent=text.trim().slice(0,6000);$('ocrDetails').open=false;
+    quoteWarn=$('editId').value?'':quoteInfo(text,f.name);
+    if(quoteWarn)ask({title:'Bu belge teklif',text:`Bu belge poliçe değil, teklif gibi görünüyor (${quoteWarn}).\n\nTeklifler sisteme kaydedilmemeli. Kesilmiş poliçenin PDF'ini seç ya da "Temizle" ile vazgeç.`,buttons:[{label:'Anladım',value:'ok'}]});
     const d=extractFromParts(parts,f.name),filled=[],fixed=[];
     const names={customer:'müşteri',phone:'telefon',plate:'plaka',kind:'branş',company:'şirket',policyNo:'poliçe no',start:'başlangıç',end:'bitiş',premium:'prim',commission:'komisyon'};
     const fk=kindFromFile(f.name);
@@ -1570,7 +1594,7 @@ async function runOCR(){
     if(d.end&&filled.includes('bitiş'))$('end').dataset.auto='0';
     if(filled.length<3)$('ocrDetails').open=true;
     const missing=['customer','policyNo','start','end','premium'].filter(k=>!$(k).value).map(k=>names[k]);
-    $('ocrStatus').textContent=(fixed.length?`Düzeltilen: ${fixed.join(', ')}. `:'')+(filled.length?`Doldurulan alanlar: ${filled.join(', ')}. `:fixed.length?'':'Boş alanlara güvenilir eşleşme bulunamadı. ')+(missing.length?`Eksik kalan: ${missing.join(', ')}. `:'')+'Kaydetmeden önce belgeyle karşılaştır; "Okunan metin" bölümünden değerleri kopyalayabilirsin.';
+    $('ocrStatus').textContent=(quoteWarn?'⚠ TEKLİF BELGESİ – kaydetme. ':'')+(fixed.length?`Düzeltilen: ${fixed.join(', ')}. `:'')+(filled.length?`Doldurulan alanlar: ${filled.join(', ')}. `:fixed.length?'':'Boş alanlara güvenilir eşleşme bulunamadı. ')+(missing.length?`Eksik kalan: ${missing.join(', ')}. `:'')+'Kaydetmeden önce belgeyle karşılaştır; "Okunan metin" bölümünden değerleri kopyalayabilirsin.';
   }catch(e){$('ocrStatus').textContent='Okuma başarısız: '+(e.message||e)}
   finally{$('ocrBtn').disabled=false;stopOcrWorker()}
 }
@@ -1617,6 +1641,37 @@ async function rereadOne(r){
   if(!Object.keys(ch).length){toast('Belgeyle kayıt uyumlu, düzeltilecek bir şey bulunamadı.');return}
   if(!await yesNo(`"${r.customer}" kaydında şu değişiklikler yapılacak:\n\n${planText(ch)}\n\nUygulansın mı?`,'Düzelt'))return;
   try{await commit({put:[applyPlan(r,ch,new Date().toISOString())]});render();toast('Kayıt düzeltildi.')}catch(e){toast('Kaydedilemedi: '+dbError(e),'err')}
+}
+let quoteRunning=false;
+async function scanQuotes(){
+  if(quoteRunning)return;
+  const list=records.filter(r=>r.file);
+  if(!list.length){toast('Belgesi olan kayıt yok.','err');return}
+  quoteRunning=true;$('quoteScanBtn').disabled=true;
+  const found=[];
+  try{
+    for(let i=0;i<list.length;i++){
+      const r=list[i];$('quoteMsg').textContent=`${i+1}/${list.length}: ${r.customer}`;
+      let why=quoteInfo('',r.file.name);
+      if(!why){try{const st=await getFileRec(r.id);if(st&&st.type==='application/pdf'){const parts=await readDocument(new File([st.buf],r.file.name,{type:st.type}),{ocr:false});why=quoteInfo(parts.join('\n'),r.file.name)}}catch{}}
+      if(why)found.push([r,why]);
+    }
+  }finally{quoteRunning=false;$('quoteScanBtn').disabled=false}
+  if(!found.length){$('quoteMsg').textContent='Teklif belgesi bulunamadı. Kayıtların hepsi poliçe görünüyor.';return}
+  $('quoteMsg').textContent=`${found.length} kayıt teklif görünüyor.`;
+  const txt=found.slice(0,12).map(([r,w])=>`• ${r.customer} · ${r.kind}\n  ${r.file.name} (${w})`).join('\n')+(found.length>12?`\n… ve ${found.length-12} kayıt daha`:'');
+  const a=await ask({title:'Teklif olan kayıtlar',text:`Şu ${found.length} kayıt poliçe değil teklif görünüyor:\n\n${txt}\n\nNe yapılsın?`,buttons:[{label:'Vazgeç',value:'cancel',cls:'secondary'},{label:"Kontrol'e al",value:'review',cls:'secondary'},{label:'Hepsini sil',value:'del',cls:'danger'}]});
+  const now=new Date().toISOString();
+  try{
+    if(a.value==='del'){
+      if(!await yesNo(`${found.length} teklif kaydı ve belgeleri kalıcı olarak silinecek. Emin misin?`,'Sil',true))return;
+      const ids=found.map(([r])=>r.id);
+      await commit({del:ids,fileDel:ids});render();$('quoteMsg').textContent=`${ids.length} teklif kaydı silindi.`;toast(`${ids.length} teklif silindi.`);
+    }else if(a.value==='review'){
+      await commitChunks(found.map(([r,w])=>({...r,review:true,notes:('TEKLİF OLABİLİR ('+w+'). '+(r.notes||'')).slice(0,2000),updated:now})),[]);
+      render();$('quoteMsg').textContent=`${found.length} kayıt Kontrol sekmesine alındı.`;toast('Kontrol sekmesine alındı.');
+    }
+  }catch(e){toast('Kaydedilemedi: '+dbError(e),'err')}
 }
 let fixRunning=false;
 async function fixAll(){
@@ -1707,20 +1762,22 @@ async function bulkImport(fileList){
   $('bulkCancelBtn').hidden=false;$('bulkPickBtn').disabled=true;$('bulkBar').hidden=false;$('bulkBar').max=files.length;$('bulkBar').value=0;
   let wl=null;try{if(navigator.wakeLock)wl=await navigator.wakeLock.request('screen')}catch{}
   const seen=new Set(records.filter(r=>r.policyNo).map(r=>trLower(r.policyNo)+'|'+r.kind));
-  let ok=0,dup=0,fail=0,rev=0,done=0,mrg=0;
+  let ok=0,dup=0,fail=0,rev=0,done=0,mrg=0;const quotes=[];
   const bp=[],bf=[];
   const flush=async()=>{if(!bp.length)return;const a=bp.splice(0),b=bf.splice(0);await commit({put:a,fileSet:b});render()};
   try{
     for(const f of files){
       if(bulkCancel)break;
       const label=`${done+1}/${files.length}: ${f.name||'dosya'}`;
-      const stat=()=>`eklenen ${ok} · birleşen ${mrg} · tekrar ${dup} · hatalı ${fail} · kontrol ${rev}`;
+      const stat=()=>`eklenen ${ok} · birleşen ${mrg} · teklif ${quotes.length} · tekrar ${dup} · hatalı ${fail} · kontrol ${rev}`;
       $('bulkInfo').textContent=label+' ('+stat()+')';
       try{
         if(f.size>MAX_FILE)throw new Error('15 MB üzeri');
         let parts,readErr='';
         try{parts=await readDocument(f,{ocr,setStatus:t=>{$('bulkInfo').textContent=label+' – '+t+' ('+stat()+')'}})}
         catch(e){parts=[''];readErr=String((e&&e.message)||e).slice(0,160)}
+        const qi=quoteInfo((parts||[]).join('\n'),f.name);
+        if(qi){quotes.push(f.name||'dosya');done++;$('bulkBar').value=done;continue}
         const d=extractFromParts(parts,f.name),now=new Date().toISOString(),type0=fileType(f);
         const kind=KINDS.includes(d.kind)?d.kind:'Diğer';
         const key=d.policyNo?trLower(d.policyNo)+'|'+kind:'';
@@ -1759,8 +1816,9 @@ async function bulkImport(fileList){
       done++;$('bulkBar').value=done;
     }
     await flush();
-    $('bulkInfo').textContent=`${bulkCancel?'Durduruldu. ':'Bitti. '}Eklenen ${ok}, birleştirilen ${mrg}, tekrar (atlandı) ${dup}, okunamayan ${fail}, kontrol gereken ${rev}.`;
+    $('bulkInfo').textContent=`${bulkCancel?'Durduruldu. ':'Bitti. '}Eklenen ${ok}, birleştirilen ${mrg}, teklif olduğu için eklenmeyen ${quotes.length}, tekrar (atlandı) ${dup}, okunamayan ${fail}, kontrol gereken ${rev}.`;
     toast(`${ok} poliçe eklendi${rev?`, ${rev} tanesi kontrol bekliyor`:''}.`);
+    if(quotes.length)ask({title:'Teklifler eklenmedi',text:`Şu ${quotes.length} belge poliçe değil teklif göründüğü için sisteme alınmadı:\n\n${quotes.slice(0,15).map(n=>'• '+n).join('\n')}${quotes.length>15?`\n… ve ${quotes.length-15} belge daha`:''}\n\nBunlardan biri aslında kesilmiş poliçeyse "Ekle" menüsünden tek tek ekleyebilirsin.`,buttons:[{label:'Tamam',value:'ok'}]});
   }catch(e){
     try{await flush()}catch{}
     $('bulkInfo').textContent='Yükleme durdu: '+dbError(e);toast('Toplu yükleme durdu: '+dbError(e),'err');
@@ -2184,6 +2242,7 @@ function bind(){
   renderRates();
   $('resetBtn').onclick=reset;
   $('kind').addEventListener('change',()=>{kindTouched=true;renderExtra()});
+  $('quoteScanBtn').onclick=()=>scanQuotes().catch(e=>toast('Tarama durdu: '+(e.message||e),'err'));
   $('fixAllBtn').onclick=()=>fixAll().catch(e=>{toast('Düzeltme durdu: '+(e.message||e),'err')});
   $('branches').addEventListener('click',e=>{const b=e.target.closest('.branch');if(!b)return;settings.branch=b.dataset.branch;saveSettings().catch(()=>{});if(!$('editId').value&&!$('renewFrom').value&&!$('customer').value.trim()){const g=GROUPS.find(x=>x.k===settings.branch);if(g&&g.kinds){$('kind').value=g.kinds[0];renderExtra()}}render()});
   $('start').addEventListener('change',()=>{const s=$('start').value;if(isDate(s)&&(!$('end').value||$('end').dataset.auto==='1')){$('end').value=addYear(s);$('end').dataset.auto='1'}});
