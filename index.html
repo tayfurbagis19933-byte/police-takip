@@ -48,6 +48,20 @@ button.linkbtn{background:none;color:var(--blue);padding:0;min-height:0;text-dec
 .tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:10px 13px;white-space:nowrap;font-weight:600;color:var(--text);min-height:42px}
 .tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
 .branches{margin:14px 0 4px}
+.grouphead{font-size:14px;margin:16px 0 8px;display:flex;align-items:center;gap:8px;color:var(--navy)}
+.grouphead span{font-size:12px;background:#edf2f7;border-radius:999px;padding:2px 9px;color:#334155}
+.grouphead.urgent{color:var(--red)}.grouphead.due{color:var(--amber)}
+.opp{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+.opp strong{display:block;color:var(--navy);font-size:14px}
+#tplDlg{max-height:86vh;overflow:auto}
+.tplopt{display:block;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;text-decoration:none;color:var(--text)}
+.tplopt strong{display:block;color:var(--navy);margin-bottom:3px}
+.tplopt span{display:block;font-size:13px;color:var(--muted);white-space:pre-line;max-height:5.4em;overflow:hidden}
+.tplrow{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.tplrow .field{width:100%}
+#reconOut ul{padding-left:18px;font-size:13px;line-height:1.6;margin:4px 0}
+#reconOut h3{font-size:14px;margin:14px 0 6px}
+.okline{color:var(--green);font-weight:700}
 .branch{border:1px solid var(--line);background:#fff;border-radius:12px;padding:9px 14px;white-space:nowrap;font-weight:700;color:var(--navy);min-height:44px;display:inline-flex;flex-direction:column;align-items:center;gap:1px;line-height:1.15}
 .branch small{font-size:11px;font-weight:600;color:var(--muted)}
 .branch.active{background:var(--blue);border-color:var(--blue);color:#fff}
@@ -181,10 +195,12 @@ dialog h3{margin:0 0 8px;font-size:17px}
 
 <div class="tabs branches noprint" id="branches" aria-label="Branş seç"></div>
 <div class="tabs" id="tabs" role="tablist">
-  <button class="tab active" role="tab" data-tab="active">Aktif</button>
+  <button class="tab active" role="tab" data-tab="today">Bugün</button>
+  <button class="tab" role="tab" data-tab="active">Aktif</button>
   <button class="tab" role="tab" data-tab="due">Yaklaşan</button>
   <button class="tab" role="tab" data-tab="followup">Takip görevleri</button>
   <button class="tab" role="tab" data-tab="customers">Müşteriler</button>
+  <button class="tab" role="tab" data-tab="opps">Fırsatlar</button>
   <button class="tab" role="tab" data-tab="history">Yenilenen</button>
   <button class="tab" role="tab" data-tab="review">Kontrol</button>
   <button class="tab" role="tab" data-tab="cancelled">İptal</button>
@@ -209,6 +225,7 @@ dialog h3{margin:0 0 8px;font-size:17px}
     <input id="bulkFiles" type="file" accept="image/*,.pdf,application/pdf" multiple hidden>
   </div>
   <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px"><input type="checkbox" id="bulkOcr" checked style="width:auto;min-height:0"> Metin okunamazsa görüntüden oku (OCR, daha yavaş)</label>
+  <label style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:13px"><input type="checkbox" id="bulkSkip" checked style="width:auto;min-height:0"> Daha önce yüklenen dosyaları atla. Yükleme yarıda kalırsa aynı dosyaları yeniden seç; kaldığı yerden devam eder.</label>
   <progress id="bulkBar" value="0" max="1" hidden style="width:100%;margin-top:10px"></progress>
   <p class="muted" id="bulkInfo" aria-live="polite"></p>
   <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
@@ -271,6 +288,16 @@ dialog h3{margin:0 0 8px;font-size:17px}
   <div class="actions"><button id="dedupeBtn" type="button" class="secondary">Çift kayıtları bul ve birleştir</button></div>
 </section>
 
+<section class="panel">
+  <h2>Telefon depolama alanı</h2>
+  <p class="muted" style="margin-top:0">Binlerce poliçe PDF'i telefonda çok yer kaplar. Bulut yedeği açıksa belgeler bulutta tutulabilir; telefona yalnızca açtığında indirilir.</p>
+  <p id="storeInfo" class="muted">Hesaplanıyor…</p>
+  <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="cloudDocs" style="width:auto;min-height:0"> Yeni belgeleri buluta yükledikten sonra telefondan kaldır</label>
+  <div class="actions"><button id="freeDocsBtn" type="button" class="secondary">Buluttaki belgeleri telefondan sil</button></div>
+  <p class="muted" id="freeInfo" aria-live="polite"></p>
+  <p class="muted">Yalnızca buluttaki kopyası doğrulanan belgeler telefondan silinir. Silinen belgeler "Belgelerle birlikte yedek" dosyasına girmez ve internet yokken açılmaz.</p>
+</section>
+
 </div>
 <div data-screen="rates" hidden>
 <section class="panel">
@@ -291,6 +318,18 @@ dialog h3{margin:0 0 8px;font-size:17px}
   </details>
   <p class="muted">Oranlar bulut yedeğine de kaydedilir.</p>
   <p class="muted" id="appVer"></p>
+</section>
+<section class="panel">
+  <h2>Komisyon mutabakatı</h2>
+  <p class="muted" style="margin-top:0">Sigorta şirketinin komisyon ekstresini (Excel, CSV veya PDF) seç. Uygulama poliçe numaralarına göre kayıtlarınla karşılaştırır; farklı tutarları, uygulamada olmayan poliçeleri ve ekstrede görünmeyen poliçelerini listeler.</p>
+  <div class="grid">
+    <div class="field full"><label for="reconFile">Ekstre dosyası</label><input id="reconFile" type="file" accept=".xlsx,.xls,.csv,.txt,.pdf,application/pdf,text/csv"></div>
+    <div class="field"><label for="reconCo">Şirket (isteğe bağlı)</label><input id="reconCo" list="coList" autocomplete="off" placeholder="Örn. Aksigorta"></div>
+    <div class="field"><label for="reconMonth">Poliçe başlangıç ayı (isteğe bağlı)</label><input id="reconMonth" type="month"></div>
+  </div>
+  <datalist id="coList"></datalist>
+  <div class="actions"><button id="reconBtn" type="button">Ekstreyi karşılaştır</button></div>
+  <div id="reconOut" style="margin-top:10px"></div>
 </section>
 </div>
 <div data-screen="settings" hidden>
@@ -322,6 +361,13 @@ dialog h3{margin:0 0 8px;font-size:17px}
   <p class="muted">iPhone'da bildirim ve uygulama olarak kullanım için: Safari → Paylaş → Ana Ekrana Ekle. Bildirimler uygulama açıldığında gösterilir; uygulama kapalıyken garanti edilmez (bunun için takvim aktarımını kullan).</p>
   <p class="muted">OCR sonucu hatalı olabilir; kaydetmeden önce tüm alanları kontrol et.</p>
 </section>
+<section class="panel">
+  <h2>Mesaj şablonları</h2>
+  <p class="muted" style="margin-top:0">Kartlardaki "WhatsApp" düğmesine basınca bu şablonlardan birini seçersin; müşteri bilgileri kendiliğinden yerleşir. Kullanılabilen alanlar: {ad} {brans} {plaka} {bitis} {kalan} {sirket} {police} {prim} {oneri} {acente}</p>
+  <div class="field"><label for="agencyName">Mesajların altına yazılacak ad</label><input id="agencyName" autocomplete="off" placeholder="Acente adı"></div>
+  <div id="tplEdit" style="margin-top:12px"></div>
+  <div class="actions"><button type="button" id="tplSave">Şablonları kaydet</button><button type="button" class="secondary" id="tplAdd">Yeni şablon</button><button type="button" class="danger small" id="tplReset">Varsayılanlara dön</button></div>
+</section>
 </div>
 </main>
 <nav id="bottomNav" class="bnav" aria-label="Menü">
@@ -339,6 +385,7 @@ dialog h3{margin:0 0 8px;font-size:17px}
   <input id="dlgInput" hidden>
   <div class="actions" id="dlgBtns"></div>
 </dialog>
+<dialog id="tplDlg"><h3 id="tplTitle"></h3><p class="muted" id="tplNote" style="margin:0 0 8px"></p><div id="tplList"></div><div class="actions"><button type="button" class="secondary" id="tplClose">Kapat</button></div></dialog>
 <div id="viewer" hidden role="dialog" aria-label="Belge görüntüleyici">
   <div class="vbar"><span class="vname" id="vName">Belge</span><button type="button" id="vZoom">Büyüt</button><button type="button" id="vShare">Paylaş</button><button type="button" id="vClose">Kapat</button></div>
   <div class="vbody" id="vBody"><div class="vpages" id="vPages"></div></div>
@@ -984,8 +1031,8 @@ const OLD_KEY='policeTakip.personal.v2';
 const FIELDS=['customer','phone','plate','kind','company','policyNo','start','end','premium','commission','notes','followStatus','followUpDate'];
 const $=id=>document.getElementById(id);
 let extraCache={},quoteWarn='';
-let lastDocText='',db=null,records=[],tab='active',currentFile=null,removeFile=false,kindTouched=false,snoozeBackup=false,hiddenAt=0,deferredPrompt=null;
-const defaults={learned:{},rates:{},warningDays:10,agencyEmail:'',lastBackup:0,lastNotified:'',notify:false,pin:null,migrated:false,serverUrl:'',serverToken:'',lastSync:0,sbUrl:'https://ockkfgtfajshylvfwsmd.supabase.co',sbKey:'sb_publishable_0EGEQ8JkvDmQas9rlg0i5A_AEfuO8o2',sbEmail:'',sbSession:null,lastCloud:0};
+let lastDocText='',db=null,records=[],tab='today',currentFile=null,removeFile=false,kindTouched=false,snoozeBackup=false,hiddenAt=0,deferredPrompt=null;
+const defaults={learned:{},rates:{},warningDays:10,agencyEmail:'',lastBackup:0,lastNotified:'',notify:false,pin:null,migrated:false,serverUrl:'',serverToken:'',lastSync:0,sbUrl:'https://ockkfgtfajshylvfwsmd.supabase.co',sbKey:'sb_publishable_0EGEQ8JkvDmQas9rlg0i5A_AEfuO8o2',sbEmail:'',sbSession:null,lastCloud:0,agencyName:'Bağış Sigorta',templates:null,oppHidden:[],cloudDocs:false};
 const PAGE=40;let shown=PAGE,lastView='';
 let sync={lastPull:'',dirty:[],tomb:[],fileUp:[],fileRm:[],init:false};
 let settings={...defaults};
@@ -1035,6 +1082,7 @@ async function commit({put=[],del=[],fileSet=null,fileDel=[],clearAll=false,quie
     if(clearAll){rs.clear();fs.clear()}
     put.forEach(r=>rs.put(r));del.forEach(id=>rs.delete(id));fileDel.forEach(id=>fs.delete(id));files.forEach(f=>fs.put(f));
   });
+  dataVer++;
   if(clearAll){records=[];HAY.clear()}
   if(del.length){const dels=new Set(del);records=records.filter(r=>!dels.has(r.id));del.forEach(id=>HAY.delete(id))}
   if(put.length){
@@ -1145,6 +1193,9 @@ function lists(src=records){
 const byEnd=(a,b)=>{const x=isDate(a.end)?a.end:'9999-99-99',y=isDate(b.end)?b.end:'9999-99-99';return x<y?-1:x>y?1:0};
 const byUpdated=(a,b)=>String(b.updated||'').localeCompare(String(a.updated||''));
 const HAY=new Map();
+let dataVer=0;
+const memo=(()=>{const c=new Map();return(k,f)=>{if(c.has(k))return c.get(k);if(c.size>30)c.clear();const v=f();c.set(k,v);return v}})();
+const memoKey=()=>dataVer+'|'+records.length+'|'+isoDate(startOfToday());
 function hayOf(r){
   let h=HAY.get(r.id);
   if(!h||h.u!==r.updated){const s=[r.customer,r.plate,r.policyNo,r.company,r.kind,r.phone,r.notes,r.followStatus,r.followUpDate,...Object.values(r.extra||{})].join(' ');h={u:r.updated,t:trLower(s),c:compact(s)};HAY.set(r.id,h)}
@@ -1178,7 +1229,7 @@ ${r.notes?`<p class="meta">${esc(r.notes)}</p>`:''}
 ${(r.followStatus&&r.followStatus!=='new')||r.followUpDate?`<p class="meta"><strong>Takip:</strong> ${esc(({'new':'Takip başlamadı','contacted':'Müşteri arandı','quoted':'Teklif verildi','waiting':'Dönüş bekleniyor','renewed':'Yenilendi','lost':'Kaybedildi'})[r.followStatus]||'Takip başlamadı')}${r.followUpDate?' · Sonraki tarih: '+fmtDate(r.followUpDate):''}</p>`:''}
 ${r.file?`<div class="filelink">Belge: ${esc(r.file.name)} · <button class="linkbtn" data-act="file">Aç</button></div>`:''}
 <div class="actions">
-${ph?`<a class="btn small secondary" href="tel:+${ph}">Ara</a><a class="btn small secondary" target="_blank" rel="noopener" href="https://wa.me/${ph}?text=${encodeURIComponent(msg)}">WhatsApp</a>`:''}
+${ph?`<a class="btn small secondary" href="tel:+${ph}">Ara</a>`:''}<button class="small secondary" data-act="msg">WhatsApp</button>
 <button class="small secondary" data-act="edit">Düzenle</button>
 ${act?'<button class="small" data-act="renew">Yenile</button>':'<button class="small secondary" data-act="activate">Aktife al</button>'}
 <details class="more"><summary>Diğer</summary><div class="actions">${r.file?'<button class="small secondary" data-act="reread">Belgeyi tekrar oku</button>':''}<button class="small secondary" data-act="ics">Takvime ekle</button>${act?'<button class="small danger" data-act="cancel">İptal edildi</button>':''}<button class="small danger" data-act="delete">Sil</button></div></details>
@@ -1211,11 +1262,13 @@ function render(){
   if(G.expired.length)parts.push(`${G.expired.length} poliçenin süresi geçti`);
   if(G.upcoming.length)parts.push(`${G.upcoming.length} poliçenin bitişine ${wd} gün veya daha az kaldı`);
   $('alertbar').hidden=!gn;$('alertText').textContent=parts.join(' · ')+'!';
-  const labels={active:`Aktif (${L.act.length})`,due:`Yaklaşan (${n})`,followup:`Takip görevleri (${L.followups.length})`,customers:'Müşteriler',history:`Yenilenen (${L.renewed.length})`,review:`Kontrol (${L.review.length})`,cancelled:`İptal (${L.cancelled.length})`};
+  const labels={today:`Bugün (${todayCount(BR)})`,opps:`Fırsatlar (${oppCount()})`,active:`Aktif (${L.act.length})`,due:`Yaklaşan (${n})`,followup:`Takip görevleri (${L.followups.length})`,customers:'Müşteriler',history:`Yenilenen (${L.renewed.length})`,review:`Kontrol (${L.review.length})`,cancelled:`İptal (${L.cancelled.length})`};
   document.querySelectorAll('#tabs .tab').forEach(b=>{b.textContent=labels[b.dataset.tab];b.classList.toggle('active',b.dataset.tab===tab);b.setAttribute('aria-selected',b.dataset.tab===tab)});
   const q=trLower($('search').value);
   const view=tab+'|'+q+'|'+cb;if(view!==lastView){lastView=view;shown=PAGE}
   if(tab==='customers'){$('list').innerHTML=customersHTML(q,BR)}
+  else if(tab==='today'){$('list').innerHTML=todayHTML(q,BR)}
+  else if(tab==='opps'){$('list').innerHTML=oppsHTML(q)}
   else{
     let arr={active:()=>L.act.slice().sort(byEnd),due:()=>[...L.expired,...L.upcoming].sort(byEnd),followup:()=>L.followups.slice(),history:()=>L.renewed.slice().sort(byUpdated),review:()=>L.review.slice().sort(byUpdated),cancelled:()=>L.cancelled.slice().sort(byUpdated)}[tab]();
     arr=arr.filter(r=>matches(r,q));
@@ -1298,7 +1351,7 @@ const rateFor=(company,kind)=>{const R=settings.rates||{};if(lkey(company)){cons
 const rateCommission=(company,kind,premium)=>{const pc=rateFor(company,kind);return pc&&premium>0?Math.round(premium*pc)/100:''};
 async function pushLearn(){
   if(!cloudOn())return;
-  try{await sbFetch(`/storage/v1/object/docs/${settings.sbSession.uid}/_settings.json`,{method:'POST',headers:{'Content-Type':'application/json','x-upsert':'true'},body:JSON.stringify({learned:settings.learned||{},rates:settings.rates||{}})})}catch{}
+  try{await sbFetch(`/storage/v1/object/docs/${settings.sbSession.uid}/_settings.json`,{method:'POST',headers:{'Content-Type':'application/json','x-upsert':'true'},body:JSON.stringify({learned:settings.learned||{},rates:settings.rates||{},templates:settings.templates||null,agencyName:settings.agencyName||''})})}catch{}
 }
 async function pullLearn(){
   if(!cloudOn())return;
@@ -1308,6 +1361,7 @@ async function pullLearn(){
     const j=await res.json();
     settings.learned={...(j.learned||{}),...(settings.learned||{})};
     settings.rates={...(j.rates||{}),...(settings.rates||{})};
+    if(!settings.templates&&Array.isArray(j.templates))settings.templates=j.templates;
     await saveSettings();
     try{renderRates()}catch{}
   }catch{}
@@ -1352,6 +1406,8 @@ function showScreen(name){
   document.querySelectorAll('[data-screen]').forEach(el=>{el.hidden=el.dataset.screen!==name});
   document.querySelectorAll('#bottomNav button').forEach(b=>{const on=b.dataset.go===name;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
   window.scrollTo(0,0);
+  if(name==='backup')renderStorage().catch(()=>{});
+  if(name==='rates')fillCoList();
 }
 async function onSubmit(e){
   e.preventDefault();
@@ -1421,6 +1477,7 @@ const LIBS={
   tess:{src:'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js',ok:()=>window.Tesseract},
   pdf:{src:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',ok:()=>window.pdfjsLib}
 };
+LIBS.xlsx={src:'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',ok:()=>window.XLSX};
 const loading={};
 function ensureLib(k){
   const L=LIBS[k];if(L.ok())return Promise.resolve();
@@ -1657,6 +1714,252 @@ async function runOCR(){
   finally{$('ocrBtn').disabled=false;stopOcrWorker()}
 }
 
+/* ---------- Mesaj şablonları ---------- */
+const DEFAULT_TPL=[
+  {id:'yenileme',name:'Yenileme hatırlatma',text:'Merhaba {ad}, {brans} poliçenizin{plaka_parantez} bitiş tarihi {bitis} ({kalan}). Yenileme için güncel teklifleri hazırlayabilirim. Uygun olduğunuzda dönüş yapar mısınız?\n{acente}'},
+  {id:'hazir',name:'Poliçe hazır',text:'Merhaba {ad}, {brans} poliçeniz {sirket} üzerinden düzenlendi. Poliçe no: {police}, bitiş tarihi: {bitis}, prim: {prim}. Poliçenizi ayrıca iletiyorum.\n{acente}'},
+  {id:'odeme',name:'Ödeme hatırlatma',text:'Merhaba {ad}, {brans} poliçenizin ({police}) ödemesi henüz görünmüyor. Poliçenin iptal olmaması için ödemeyi tamamlamanızı rica ederim.\n{acente}'},
+  {id:'capraz',name:'Ek sigorta önerisi',text:'Merhaba {ad}, {brans} poliçeniz bizde. {oneri} sigortanız için de size uygun bir teklif hazırlayabilirim, ister misiniz?\n{acente}'},
+  {id:'bayram',name:'Bayram tebriği',text:'Merhaba {ad}, bayramınızı en içten dileklerimle kutlarım. Sağlıklı ve huzurlu nice bayramlar.\n{acente}'}
+];
+const templates=()=>Array.isArray(settings.templates)&&settings.templates.length?settings.templates:DEFAULT_TPL;
+function fillTpl(text,r,extra={}){
+  const d=daysTo(r.end);
+  const v={ad:r.customer||'',brans:r.kind||'',plaka:r.plate||'',plaka_parantez:r.plate&&groupOf(r.kind)==='arac'?' ('+r.plate+')':'',bitis:fmtDate(r.end),
+    kalan:d===Infinity?'':d<0?`${-d} gün önce bitti`:d===0?'bugün bitiyor':`${d} gün kaldı`,sirket:r.company||'',police:r.policyNo||'',
+    prim:r.premium!==''&&r.premium!=null?money(r.premium)+' TL':'',acente:settings.agencyName||'',oneri:'',...extra};
+  return String(text).replace(/\{(\w+)\}/g,(m,k)=>k in v?v[k]:m).replace(/\(\s*\)/g,'').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+function openMsg(r,extra={},prefer=''){
+  const ph=phoneDigits(r.phone),base=ph?`https://wa.me/${ph}?text=`:'https://wa.me/?text=';
+  const list=templates().slice();
+  if(prefer){const i=list.findIndex(t=>t.id===prefer);if(i>0)list.unshift(list.splice(i,1)[0])}
+  $('tplTitle').textContent=(r.customer||'Müşteri')+' · mesaj seç';
+  $('tplNote').textContent=ph?'Dokunduğun mesaj WhatsApp\'ta hazır açılır; göndermeden önce düzenleyebilirsin.':'Bu kayıtta telefon yok. WhatsApp açılınca kişiyi kendin seçmelisin.';
+  $('tplList').innerHTML=list.map(t=>{const msg=fillTpl(t.text,r,extra);return `<a class="tplopt" target="_blank" rel="noopener" href="${esc(base+encodeURIComponent(msg))}"><strong>${esc(t.name)}</strong><span>${esc(msg)}</span></a>`}).join('');
+  $('tplDlg').showModal();
+}
+function renderTemplates(list=templates()){
+  if(!$('tplEdit'))return;
+  $('agencyName').value=settings.agencyName||'';
+  $('tplEdit').innerHTML=list.map((t,i)=>`<div class="tplrow" data-id="${esc(t.id)}"><div class="field"><label for="tn${i}">Şablon adı</label><input id="tn${i}" data-f="name" value="${esc(t.name)}"></div><div class="field"><label for="tt${i}">Mesaj</label><textarea id="tt${i}" data-f="text" rows="4">${esc(t.text)}</textarea></div><button type="button" class="danger small" data-tdel="1">Şablonu sil</button></div>`).join('');
+}
+const readTemplates=()=>[...document.querySelectorAll('#tplEdit .tplrow')].map(row=>({id:row.dataset.id,name:row.querySelector('[data-f=name]').value.trim(),text:row.querySelector('[data-f=text]').value.trim()})).filter(t=>t.name&&t.text);
+async function saveTemplates(){
+  const l=readTemplates();if(!l.length){toast('En az bir şablon olmalı.','err');return}
+  settings.templates=l;settings.agencyName=$('agencyName').value.trim();
+  await saveSettings();pushLearn();renderTemplates();toast('Şablonlar kaydedildi.');
+}
+
+/* ---------- Bugün: günlük iş listesi ---------- */
+const todayGroups=src=>memo('today|'+memoKey()+'|'+(src===records?'all':curBranch()),()=>todayGroupsRaw(src));
+function todayGroupsRaw(src){
+  const act=src.filter(r=>r.status==='active'&&r.followStatus!=='lost'&&r.followStatus!=='renewed');
+  const used=new Set(),G=[];
+  const add=(title,arr,cls)=>{arr=arr.filter(r=>!used.has(r.id));arr.forEach(r=>used.add(r.id));if(arr.length)G.push({title,arr,cls})};
+  const dd=r=>daysTo(r.end);
+  add('Takip tarihi gelenler',act.filter(r=>r.followUpDate&&daysTo(r.followUpDate)<=0).sort((a,b)=>a.followUpDate.localeCompare(b.followUpDate)),'urgent');
+  add('Süresi geçti, yenilenmedi (son 60 gün)',act.filter(r=>dd(r)<0&&dd(r)>=-60).sort(byEnd).reverse(),'urgent');
+  add('7 gün içinde bitiyor',act.filter(r=>dd(r)>=0&&dd(r)<=7).sort(byEnd),'urgent');
+  add('8–15 gün içinde bitiyor',act.filter(r=>dd(r)>=8&&dd(r)<=15).sort(byEnd),'due');
+  add('16–30 gün içinde bitiyor',act.filter(r=>dd(r)>=16&&dd(r)<=30).sort(byEnd),'');
+  return G;
+}
+const todayCount=src=>todayGroups(src).reduce((n,g)=>n+g.arr.length,0);
+function todayHTML(q,src){
+  const G=todayGroups(src).map(g=>({...g,arr:g.arr.filter(r=>matches(r,q))})).filter(g=>g.arr.length);
+  if(!G.length)return '<div class="panel empty">Bugün aranacak veya takip edilecek iş yok. 30 gün içinde biten poliçe de yok.</div>';
+  return '<p class="muted" style="margin:0 0 4px">Yenilenen veya "kaybedildi" işaretlenen poliçeler bu listeden çıkar. Takip aşamasını "Düzenle"den güncelleyebilirsin.</p>'+
+    G.map(g=>`<h3 class="grouphead ${g.cls}">${esc(g.title)} <span>${g.arr.length}</span></h3>`+g.arr.slice(0,shown).map(itemHTML).join('')+(g.arr.length>shown?`<button class="secondary" style="width:100%" data-act="more">Daha fazla göster (${g.arr.length-shown} kayıt daha)</button>`:'')).join('');
+}
+
+/* ---------- Fırsatlar: çapraz satış ---------- */
+const OPP_RULES=[
+  {need:'Trafik',lack:'Kasko',offer:'Kasko',why:'Trafik sigortası bizde, kaskosu yok.'},
+  {need:'Kasko',lack:'Trafik',offer:'Trafik',why:'Kaskosu bizde, trafik sigortası başka yerde olabilir.'},
+  {need:'Konut',lack:'DASK',offer:'DASK',why:'Konut sigortası bizde, zorunlu deprem sigortası (DASK) bizde değil.'},
+  {need:'DASK',lack:'Konut',offer:'Konut',why:'DASK bizde, konut sigortası yok.'}
+];
+const oppList=()=>memo('opp|'+memoKey()+'|'+(settings.oppHidden||[]).length,oppListRaw);
+function oppListRaw(){
+  const by=new Map();
+  for(const r of records){
+    if(r.status!=='active'||daysTo(r.end)<-30||/^kontrol:/i.test(r.customer))continue;
+    const k=trLower(r.customer);(by.get(k)||by.set(k,[]).get(k)).push(r);
+  }
+  const hid=new Set(settings.oppHidden||[]),out=[];
+  for(const [k,rs] of by){
+    const kinds=new Set(rs.map(r=>r.kind));
+    const offers=OPP_RULES.filter(x=>kinds.has(x.need)&&!kinds.has(x.lack)&&!hid.has(k+'|'+x.offer)).map(x=>({...x,rep:rs.find(r=>r.kind===x.need)}));
+    if(!offers.length)continue;
+    const latest=rs.slice().sort(byUpdated)[0];
+    out.push({k,name:latest.customer,phone:(rs.find(r=>r.phone)||{}).phone||'',kinds:[...kinds],offers});
+  }
+  return out.sort((a,b)=>b.offers.length-a.offers.length||a.name.localeCompare(b.name,'tr'));
+}
+const oppCount=()=>oppList().reduce((n,o)=>n+o.offers.length,0);
+function oppsHTML(q){
+  let L=oppList();
+  if(q)L=L.filter(o=>o.k.includes(q)||o.offers.some(x=>trLower(x.offer).includes(q)));
+  if(!L.length)return '<div class="panel empty">Şu an önerilecek ek sigorta bulunmadı.</div>';
+  const total=L.length;
+  return `<p class="muted" style="margin:0 0 8px">${total} müşteriye ek sigorta önerilebilir. Müşteri bazında bakılır; birden fazla aracı veya evi olanlarda kontrol et. İstemediğin öneriyi "Gösterme" ile gizleyebilirsin.</p>`+
+    L.slice(0,shown).map(o=>{const ph=phoneDigits(o.phone);
+      return `<article class="item"><div class="itemtop"><div><h3>${esc(o.name)}</h3><div class="meta">Bizdeki poliçeler: ${esc(o.kinds.join(', '))}${o.phone?'<br>Tel: '+esc(o.phone):''}</div></div></div>`+
+      o.offers.map(x=>`<div class="opp"><strong>${esc(x.offer)} öner</strong><span class="meta">${esc(x.why)}</span><div class="actions" style="margin-top:8px">${ph?`<a class="btn small secondary" href="tel:+${ph}">Ara</a>`:''}<button class="small" data-act="oppmsg" data-rid="${esc(x.rep.id)}" data-ph="${esc(o.phone)}" data-oneri="${esc(x.offer)}">WhatsApp</button><button class="small secondary" data-act="opphide" data-key="${esc(o.k+'|'+x.offer)}">Gösterme</button></div></div>`).join('')+
+      `</article>`}).join('')+
+    (total>shown?`<button class="secondary" style="width:100%" data-act="more">Daha fazla göster (${total-shown} müşteri daha)</button>`:'');
+}
+
+/* ---------- Depolama: belgeleri bulutta tut ---------- */
+async function renderStorage(){
+  if(!$('storeInfo'))return;
+  $('cloudDocs').checked=!!settings.cloudDocs;
+  let n=0;
+  try{n=await new Promise((res,rej)=>{if(!db)return res(0);const q=db.transaction('files').objectStore('files').count();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}catch{}
+  let used='';
+  try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();used=` · Kullanılan alan: ${((e.usage||0)/1048576).toFixed(0)} MB`}}catch{}
+  $('storeInfo').textContent=`Belgesi olan kayıt: ${records.filter(r=>r.file).length} · Telefonda duran belge: ${n}${used}${cloudOn()?'':' · Bulut yedeği kapalı'}`;
+}
+async function freeLocalDocs(){
+  if(!cloudOn()){toast('Önce "Bulut yedekleme" bölümünden giriş yap.','err');return}
+  if(!sync.init||sync.fileUp.length){toast(`Önce eşitleme bitmeli${sync.fileUp.length?` (bekleyen ${sync.fileUp.length} belge)`:''}. "Şimdi eşitle"ye bas, bitince tekrar dene.`,'err');return}
+  const keys=await new Promise((res,rej)=>{const q=db.transaction('files').objectStore('files').getAllKeys();q.onsuccess=()=>res(q.result||[]);q.onerror=()=>rej(q.error)});
+  if(!keys.length){$('freeInfo').textContent='Telefonda belge yok.';return}
+  if(!await yesNo(`${keys.length} belgenin buluttaki kopyası kontrol edilecek, bulutta olanlar telefondan silinecek. Belgeler açtığında yeniden indirilir.`,'Devam'))return;
+  const uid=settings.sbSession.uid,q=keys.slice();let del=0,keep=0,i=0;
+  $('freeDocsBtn').disabled=true;
+  const worker=async()=>{while(q.length){const id=q.shift();i++;$('freeInfo').textContent=`${i}/${keys.length} kontrol ediliyor…`;
+    try{const res=await sbFetch(`/storage/v1/object/authenticated/docs/${uid}/${id}`,{method:'HEAD'});
+      if(res.ok){await run(['files'],'readwrite',t=>t.objectStore('files').delete(id));del++}else keep++}
+    catch(e){keep++;if(e&&e.auth)throw e}}};
+  try{await Promise.all([worker(),worker(),worker(),worker()])}finally{$('freeDocsBtn').disabled=false}
+  $('freeInfo').textContent=`${del} belge telefondan silindi${keep?`, ${keep} belge bulutta doğrulanamadığı için telefonda bırakıldı`:''}.`;
+  renderStorage().catch(()=>{});
+}
+
+/* ---------- Komisyon mutabakatı ---------- */
+function fillCoList(){const el=$('coList');if(el)el.innerHTML=[...new Set(records.map(r=>r.company).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'tr')).map(c=>`<option value="${esc(c)}">`).join('')}
+function cellAmount(v){
+  if(typeof v==='number')return Number.isFinite(v)?v:null;
+  let s=String(v??'').replace(/\s|tl|try|₺/gi,'');if(!s)return null;
+  const neg=/^-|^\(.*\)$|-$/.test(s);s=s.replace(/[()\-+]/g,'');
+  if(!/^\d[\d.,]*$/.test(s))return null;
+  const m=/^(.*?)[.,](\d{1,2})$/.exec(s);
+  const n=m?parseFloat(m[1].replace(/[.,]/g,'')+'.'+m[2]):parseFloat(s.replace(/[.,]/g,''));
+  return Number.isFinite(n)?(neg?-n:n):null;
+}
+function splitLine(l,d){const out=[];let cur='',q=false;for(let i=0;i<l.length;i++){const c=l[i];if(q){if(c==='"'){if(l[i+1]==='"'){cur+='"';i++}else q=false}else cur+=c}else if(c==='"')q=true;else if(c===d){out.push(cur);cur=''}else cur+=c}out.push(cur);return out}
+async function statementRows(f){
+  const name=String(f.name||'').toLowerCase();
+  if(fileType(f)==='application/pdf'||name.endsWith('.pdf')){
+    const parts=await pdfParts(f,{ocr:false,maxPages:60});
+    return parts.join('\n').split(/\r?\n/).filter(l=>l.trim()).map(l=>[l.trim()]);
+  }
+  if(/\.(xlsx|xls|ods)$/.test(name)){
+    await ensureLib('xlsx');
+    const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}),rows=[];
+    for(const sn of wb.SheetNames)rows.push(...XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:''}));
+    return rows;
+  }
+  const lines=(await f.text()).split(/\r?\n/).filter(l=>l.trim());
+  const d=[';','\t',','].map(x=>[x,(lines[0]||'').split(x).length]).sort((a,b)=>b[1]-a[1])[0][0];
+  return lines.map(l=>splitLine(l,d));
+}
+function findCols(rows){
+  for(let i=0;i<Math.min(rows.length,20);i++){
+    const h=(rows[i]||[]).map(c=>fold(String(c??'')).replace(/\s+/g,' ').trim());
+    const pol=h.findIndex(x=>/police\s*(no|numarasi|numara)|^police$|pol\.?\s*no/.test(x));
+    if(pol<0)continue;
+    if(h.filter(Boolean).length<3)continue;
+    let kom=h.findIndex(x=>/komisyon/.test(x)&&/tutar|tl|net|toplam/.test(x)&&!/oran|%/.test(x));
+    if(kom<0)kom=h.findIndex(x=>/komisyon/.test(x)&&!/oran|%/.test(x));
+    if(kom<0||kom===pol)continue;
+    const who=h.findIndex(x=>/musteri|sigortali|unvan|ad soyad|adi soyadi/.test(x));
+    return{i,pol,kom,who};
+  }
+  return null;
+}
+function recIndex(month){
+  const m=new Map();
+  for(const r of records){if(!r.policyNo||r.status==='cancelled')continue;const b=polBase(r.policyNo).replace(/[^a-z0-9]/g,'');if(b.length<5)continue;(m.get(b)||m.set(b,[]).get(b)).push(r)}
+  const pick=arr=>(month&&arr.find(r=>(r.start||'').slice(0,7)===month))||arr.slice().sort((a,b)=>String(b.start).localeCompare(String(a.start)))[0];
+  const out=new Map();for(const [k,arr] of m)out.set(k,pick(arr));return out;
+}
+function findRec(idx,pol){
+  const c=polBase(pol).replace(/[^a-z0-9]/g,'');if(c.length<5)return null;
+  if(idx.has(c))return idx.get(c);
+  if(c.length<7)return null;
+  for(const [k,r] of idx)if(k.length>=7&&(k.includes(c)||c.includes(k)))return r;
+  return null;
+}
+let reconData=null;
+async function runRecon(){
+  const f=$('reconFile').files[0];if(!f){toast('Önce ekstre dosyasını seç.','err');return}
+  const co=$('reconCo').value.trim(),month=$('reconMonth').value;
+  $('reconBtn').disabled=true;$('reconOut').innerHTML='<p class="muted">Ekstre okunuyor…</p>';reconData=null;
+  try{
+    const rows=await statementRows(f),idx=recIndex(month),cols=findCols(rows);
+    const hits=new Map(),unknown=[];
+    const hit=(r,kom,amts)=>{const h=hits.get(r.id)||{r,kom:0,has:false,amts:[]};if(kom!=null){h.kom+=kom;h.has=true}else h.amts.push(...amts);hits.set(r.id,h)};
+    if(cols){
+      for(const row of rows.slice(cols.i+1)){
+        const pol=String(row[cols.pol]??'').trim();if(!/\d{4}/.test(pol))continue;
+        const kom=cellAmount(row[cols.kom]),r=findRec(idx,pol);
+        if(!r){if(kom)unknown.push({pol,kom,who:cols.who>=0?String(row[cols.who]??'').trim():''});continue}
+        hit(r,kom==null?0:kom,[]);
+      }
+    }else{
+      const AMT_G=/-?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}(?!\d)/g;
+      for(const row of rows){
+        const line=row.join(' ');
+        let r=null;for(const t of line.split(/\s+/).filter(t=>/\d{5,}/.test(t))){r=findRec(idx,t.replace(/[^\w\-\/]/g,''));if(r)break}
+        if(!r)continue;
+        const amts=[...line.matchAll(AMT_G)].map(m=>cellAmount(m[0])).filter(x=>x!=null);
+        const exp=Number(r.commission)||Number(rateCommission(r.company,r.kind,Number(r.premium)))||0;
+        let kom=null;
+        if(exp){const c=amts.find(a=>Math.abs(Math.abs(a)-exp)<=Math.max(1,exp*0.03));if(c!=null)kom=c}
+        if(kom==null){const prem=Number(r.premium)||0;const c=amts.filter(a=>prem?Math.abs(a)<prem*0.4&&Math.abs(Math.abs(a)-prem)>1:false);if(c.length===1)kom=c[0]}
+        hit(r,kom,amts);
+      }
+    }
+    const ok=[],diff=[],fill=[],unsure=[],neg=[];
+    for(const h of hits.values()){
+      if(!h.has){unsure.push(h);continue}
+      const k=Math.round(h.kom*100)/100,cur=h.r.commission===''?null:Number(h.r.commission);
+      if(k<0){neg.push({...h,kom:k});continue}
+      if(cur==null)fill.push({...h,kom:k});else if(Math.abs(cur-k)<1)ok.push(h);else diff.push({...h,kom:k,cur});
+    }
+    const ck=lkey(co),seen=new Set(hits.keys());
+    const missing=(ck||month)?records.filter(r=>r.status!=='cancelled'&&r.policyNo&&!seen.has(r.id)&&(!ck||(lkey(r.company)&&(lkey(r.company).includes(ck)||ck.includes(lkey(r.company)))))&&(!month||(r.start||'').slice(0,7)===month)):null;
+    const total=[...hits.values()].reduce((s,h)=>s+(h.has?h.kom:0),0)+unknown.reduce((s,u)=>s+u.kom,0);
+    reconData={apply:[...diff,...fill]};
+    const li=(arr,fn)=>arr.slice(0,80).map(fn).join('')+(arr.length>80?`<li>… ve ${arr.length-80} kayıt daha</li>`:'');
+    const who=h=>`${esc(h.r.customer)} · ${esc(h.r.kind)} · ${esc(h.r.policyNo)}`;
+    if(!hits.size&&!unknown.length){$('reconOut').innerHTML=`<p>Ekstrede kayıtlarınla eşleşen poliçe numarası bulunamadı.${cols?'':' Dosyada "Poliçe No" ve "Komisyon" başlıklı sütunlar olmalı; PDF ise Excel halini dene.'}</p>`;return}
+    $('reconOut').innerHTML=
+      `<p><strong>Ekstrede eşleşen:</strong> ${hits.size} poliçe · <strong>Ekstre toplam komisyon:</strong> ${money(total)} TL</p>`+
+      `<p class="okline">Tutarı uyan: ${ok.length}</p>`+
+      (diff.length?`<h3>Tutarı farklı (${diff.length})</h3><ul>${li(diff,h=>`<li>${who(h)}: kayıtta ${money(h.cur)} TL, ekstrede ${money(h.kom)} TL</li>`)}</ul>`:'')+
+      (fill.length?`<h3>Kayıtta komisyon boş, ekstrede var (${fill.length})</h3><ul>${li(fill,h=>`<li>${who(h)}: ${money(h.kom)} TL</li>`)}</ul>`:'')+
+      (reconData.apply.length?`<div class="actions"><button type="button" data-recon="apply">Ekstredeki tutarları kayıtlara yaz (${reconData.apply.length})</button></div>`:'')+
+      (neg.length?`<h3>İade / eksi komisyon (${neg.length})</h3><p class="muted">İptal veya zeyl kaynaklı olabilir; kayıtlara yazılmaz.</p><ul>${li(neg,h=>`<li>${who(h)}: ${money(h.kom)} TL</li>`)}</ul>`:'')+
+      (unsure.length?`<h3>Ekstrede var, komisyon tutarı ayırt edilemedi (${unsure.length})</h3><ul>${li(unsure,h=>`<li>${who(h)}: satırdaki tutarlar ${h.amts.map(a=>money(a)).join(' / ')||'—'}</li>`)}</ul>`:'')+
+      (unknown.length?`<h3>Ekstrede var, uygulamada kayıtlı değil (${unknown.length})</h3><p class="muted">Bu poliçeleri uygulamaya eklememiş olabilirsin.</p><ul>${li(unknown,u=>`<li>${esc(u.pol)}${u.who?' · '+esc(u.who):''}: ${money(u.kom)} TL</li>`)}</ul>`:'')+
+      (missing?(missing.length?`<h3>Uygulamada var, ekstrede yok (${missing.length})</h3><p class="muted">Bu poliçelerin komisyonu ödenmemiş ya da başka bir aya kaydırılmış olabilir.</p><ul>${li(missing,r=>`<li>${esc(r.customer)} · ${esc(r.kind)} · ${esc(r.policyNo)} · ${fmtDate(r.start)}${r.commission!==''?' · beklenen '+money(r.commission)+' TL':''}</li>`)}</ul>`:'<p class="okline">Seçtiğin şirket ve aydaki bütün poliçeler ekstrede var.</p>'):'<p class="muted">Ekstrede olmayan poliçelerini görmek için şirket ve/veya ay seçip tekrar karşılaştır.</p>');
+  }catch(e){$('reconOut').innerHTML=`<p>Ekstre okunamadı: ${esc(e.message||e)}</p>`}
+  finally{$('reconBtn').disabled=false}
+}
+async function applyRecon(){
+  if(!reconData||!reconData.apply.length)return;
+  const L=reconData.apply;
+  if(!await yesNo(`${L.length} kaydın komisyonu ekstredeki tutarla değiştirilecek.`,'Yaz'))return;
+  const now=new Date().toISOString();
+  await commitChunks(L.map(h=>({...(records.find(x=>x.id===h.r.id)||h.r),commission:h.kom,updated:now})),[]);
+  reconData=null;render();toast(`${L.length} kaydın komisyonu güncellendi.`);
+  const b=document.querySelector('[data-recon="apply"]');if(b){b.disabled=true;b.textContent='Tutarlar kayıtlara yazıldı'}
+}
+
 /* ---------- Kayıtlı belgeyi tekrar okuyup hataları düzeltme ---------- */
 const FIX_NAMES={customer:'Müşteri',kind:'Branş',policyNo:'Poliçe no',start:'Başlangıç',end:'Bitiş',premium:'Prim',company:'Şirket',plate:'Plaka/adres',phone:'Telefon',commission:'Komisyon'};
 async function fixPlan(r,{read=true,ocr=true,st=()=>{}}={}){
@@ -1814,8 +2117,16 @@ async function mergeDuplicates(){
 }
 async function bulkImport(fileList){
   if(bulkRunning)return;
-  const files=[...fileList].filter(f=>ALLOWED.has(fileType(f)));
-  if(!files.length){toast('Uygun dosya seçilmedi (PDF veya fotoğraf).','err');return}
+  const all=[...fileList].filter(f=>ALLOWED.has(fileType(f)));
+  if(!all.length){toast('Uygun dosya seçilmedi (PDF veya fotoğraf).','err');return}
+  const sigs=(await idbGet('meta','importSigs').catch(()=>null))||{};
+  const sigOf=f=>`${f.name}|${f.size}`;
+  const files=$('bulkSkip').checked?all.filter(f=>!sigs[sigOf(f)]):all;
+  const skipped=all.length-files.length;
+  if(!files.length){toast(`Seçilen ${all.length} dosyanın hepsi daha önce yüklenmiş. Yeniden yüklemek için "Daha önce yüklenen dosyaları atla" işaretini kaldır.`,'err');return}
+  const saveSigs=()=>run(['meta'],'readwrite',t=>t.objectStore('meta').put(sigs,'importSigs')).catch(()=>{});
+  let sigN=0;const markSig=async f=>{sigs[sigOf(f)]=1;if(++sigN%10===0)await saveSigs()};
+  const pendSigs=[];
   const ocr=$('bulkOcr').checked;
   bulkRunning=true;bulkCancel=false;
   $('bulkCancelBtn').hidden=false;$('bulkPickBtn').disabled=true;$('bulkBar').hidden=false;$('bulkBar').max=files.length;$('bulkBar').value=0;
@@ -1823,7 +2134,7 @@ async function bulkImport(fileList){
   const seen=new Set(records.filter(r=>r.policyNo).map(r=>trLower(r.policyNo)+'|'+r.kind));
   let ok=0,dup=0,fail=0,rev=0,done=0,mrg=0;const quotes=[];
   const bp=[],bf=[];
-  const flush=async()=>{if(!bp.length)return;const a=bp.splice(0),b=bf.splice(0);await commit({put:a,fileSet:b});render()};
+  const flush=async()=>{if(!bp.length)return;const a=bp.splice(0),b=bf.splice(0);await commit({put:a,fileSet:b});for(const x of pendSigs.splice(0))await markSig(x);render()};
   try{
     for(const f of files){
       if(bulkCancel)break;
@@ -1836,7 +2147,7 @@ async function bulkImport(fileList){
         try{parts=await readDocument(f,{ocr,setStatus:t=>{$('bulkInfo').textContent=label+' – '+t+' ('+stat()+')'}})}
         catch(e){parts=[''];readErr=String((e&&e.message)||e).slice(0,160)}
         const qi=quoteInfo((parts||[]).join('\n'),f.name);
-        if(qi){quotes.push(f.name||'dosya');done++;$('bulkBar').value=done;continue}
+        if(qi){quotes.push(f.name||'dosya');await markSig(f);done++;$('bulkBar').value=done;continue}
         const d=extractFromParts(parts,f.name),now=new Date().toISOString(),type0=fileType(f);
         const kind=KINDS.includes(d.kind)?d.kind:'Diğer';
         const key=d.policyNo?trLower(d.policyNo)+'|'+kind:'';
@@ -1848,14 +2159,14 @@ async function bulkImport(fileList){
         const fname=String(f.name||'belge').slice(0,200);
         if(pend){
           const m=normalize({...pend,...zeylMerge(pend,dd,z,fname,now)});m.file=pend.file;
-          Object.assign(pend,m);mrg++;done++;$('bulkBar').value=done;continue;
+          Object.assign(pend,m);pendSigs.push(f);mrg++;done++;$('bulkBar').value=done;continue;
         }
         if(old){
           /* Zeyl veya aynı poliçenin ek belgesi: ayrı kayıt açma, mevcut kayda işle */
           const m=normalize({...old,...zeylMerge(old,dd,z,fname,now)});m.file=old.file;
           let fs=null;
           if(!old.file){let blob=f,type=fileType(f);if(type!=='application/pdf'){const c=await compressImage(f);if(c){blob=c;type='image/jpeg'}}const buf=await blob.arrayBuffer();m.file={name:fname,type,size:buf.byteLength};fs={id:m.id,type,buf}}
-          await commit({put:[m],fileSet:fs});render();
+          await commit({put:[m],fileSet:fs});render();await markSig(f);
           mrg++;done++;$('bulkBar').value=done;continue;
         }
         /* Buraya gelen belge aynı dönemde kayıtlı değil (yukarıda birleştirilirdi); aynı numaralı yenilemeler yeni kayıt olur */
@@ -1869,13 +2180,14 @@ async function bulkImport(fileList){
           r.file={name:String(f.name||'belge').slice(0,200),type,size:buf.byteLength};
           if(key)seen.add(key);
           bp.push(r);bf.push({id:r.id,type,buf});ok++;if(needs)rev++;
+          pendSigs.push(f);
           if(bp.length>=10)await flush();
         }
       }catch(e){fail++;console.warn(f.name,e)}
       done++;$('bulkBar').value=done;
     }
     await flush();
-    $('bulkInfo').textContent=`${bulkCancel?'Durduruldu. ':'Bitti. '}Eklenen ${ok}, birleştirilen ${mrg}, teklif olduğu için eklenmeyen ${quotes.length}, tekrar (atlandı) ${dup}, okunamayan ${fail}, kontrol gereken ${rev}.`;
+    $('bulkInfo').textContent=`${bulkCancel?'Durduruldu. ':'Bitti. '}${skipped?`Daha önce yüklenmiş ${skipped} dosya atlandı. `:''}Eklenen ${ok}, birleştirilen ${mrg}, teklif olduğu için eklenmeyen ${quotes.length}, tekrar (atlandı) ${dup}, okunamayan ${fail}, kontrol gereken ${rev}.`;
     toast(`${ok} poliçe eklendi${rev?`, ${rev} tanesi kontrol bekliyor`:''}.`);
     if(quotes.length)ask({title:'Teklifler eklenmedi',text:`Şu ${quotes.length} belge poliçe değil teklif göründüğü için sisteme alınmadı:\n\n${quotes.slice(0,15).map(n=>'• '+n).join('\n')}${quotes.length>15?`\n… ve ${quotes.length-15} belge daha`:''}\n\nBunlardan biri aslında kesilmiş poliçeyse "Ekle" menüsünden tek tek ekleyebilirsin.`,buttons:[{label:'Tamam',value:'ok'}]});
   }catch(e){
@@ -1884,6 +2196,7 @@ async function bulkImport(fileList){
   }finally{
     bulkRunning=false;$('bulkCancelBtn').hidden=true;$('bulkPickBtn').disabled=false;$('bulkBar').hidden=true;
     if(wl)try{wl.release()}catch{}
+    await saveSigs();
     stopOcrWorker();render();
   }
 }
@@ -1918,9 +2231,12 @@ async function onListClick(e){
   const b=e.target.closest('[data-act]');if(!b)return;
   const act=b.dataset.act;
   if(act==='more'){shown+=PAGE*2;render();return}
+  if(act==='oppmsg'){const r0=records.find(x=>x.id===b.dataset.rid);if(r0)openMsg({...r0,phone:r0.phone||b.dataset.ph||''},{oneri:b.dataset.oneri},'capraz');return}
+  if(act==='opphide'){settings.oppHidden=[...new Set([...(settings.oppHidden||[]),b.dataset.key])];await saveSettings();render();toast('Bu öneri artık gösterilmeyecek.');return}
   if(act==='cust'){$('search').value=b.dataset.cust;tab='active';render();$('search').scrollIntoView({behavior:'smooth'});return}
   const card=b.closest('[data-id]');if(!card)return;
   const id=card.dataset.id,r=records.find(x=>x.id===id);if(!r)return;
+  if(act==='msg'){openMsg(r,{},r.status==='active'&&daysTo(r.end)<=30?'yenileme':'');return}
   if(act==='edit')startEdit(r);
   else if(act==='renew')startRenew(r);
   else if(act==='reread'){b.disabled=true;try{await rereadOne(r)}finally{b.disabled=false}}
@@ -2127,6 +2443,7 @@ async function cloudPush(info){
         const res=await sbFetch(`/storage/v1/object/docs/${uid}/${id}`,{method:'POST',headers:{'Content-Type':f.type||'application/octet-stream','x-upsert':'true'},body:f.buf});
         if(!res.ok)throw new Error(await sbErr(res));
         sync.fileUp=sync.fileUp.filter(x=>x!==id);
+        if(settings.cloudDocs)try{await run(['files'],'readwrite',t=>t.objectStore('files').delete(id))}catch{}
       }catch(e){failed++;if(e.auth)throw e;if(failed===1)sync.lastFileErr=e.message}
       upl++;info(`Belgeler gönderiliyor… ${upl}/${totalF}`);
       if(upl%20===0)await saveSyncState();
@@ -2193,7 +2510,7 @@ async function getFileRec(id){
   if(!res.ok)return null;
   const buf=await res.arrayBuffer();
   const nf={id,type:ALLOWED.has(rec.file.type)?rec.file.type:'application/pdf',buf};
-  try{await run(['files'],'readwrite',t=>t.objectStore('files').put(nf))}catch{}
+  if(!settings.cloudDocs)try{await run(['files'],'readwrite',t=>t.objectStore('files').put(nf))}catch{}
   nf.fromCloud=true;
   return nf;
 }
@@ -2272,6 +2589,7 @@ async function storageInfo(){
 }
 function updateSettingsUI(){
   try{renderRates()}catch{}
+  try{renderTemplates()}catch{}
   $('warningDays').value=String(settings.warningDays);$('agencyEmail').value=settings.agencyEmail||'';$('serverUrl').value=settings.serverUrl||'';$('serverToken').value=settings.serverToken||'';updateSyncInfo();
   $('sbUrl').value=settings.sbUrl||'';$('sbKey').value=settings.sbKey||'';$('sbEmail').value=settings.sbEmail||'';
   const on=cloudOn();
@@ -2304,6 +2622,17 @@ function bind(){
   renderRates();
   $('resetBtn').onclick=reset;
   $('kind').addEventListener('change',()=>{kindTouched=true;renderExtra()});
+  $('tplClose').onclick=()=>$('tplDlg').close();
+  $('tplList').addEventListener('click',e=>{if(e.target.closest('a'))setTimeout(()=>{try{$('tplDlg').close()}catch{}},400)});
+  $('tplSave').onclick=()=>saveTemplates().catch(e=>toast('Kaydedilemedi: '+dbError(e),'err'));
+  $('tplAdd').onclick=()=>renderTemplates([...readTemplates(),{id:uid(),name:'Yeni şablon',text:'Merhaba {ad}, \n{acente}'}]);
+  $('tplReset').onclick=async()=>{if(!await yesNo('Şablonlar varsayılan hale dönsün mü? Kendi yazdıkların silinir.','Varsayılana dön',true))return;settings.templates=null;await saveSettings();pushLearn();renderTemplates();toast('Varsayılan şablonlar geri geldi.')};
+  $('tplEdit').addEventListener('click',e=>{const b=e.target.closest('[data-tdel]');if(b)b.closest('.tplrow').remove()});
+  $('cloudDocs').addEventListener('change',async e=>{settings.cloudDocs=e.target.checked;await saveSettings();toast(settings.cloudDocs?'Yeni belgeler buluta yüklendikten sonra telefondan kaldırılacak.':'Belgeler telefonda da tutulacak.')});
+  $('freeDocsBtn').onclick=()=>freeLocalDocs().catch(e=>{$('freeDocsBtn').disabled=false;toast('Hata: '+(e.message||e),'err')});
+  $('reconBtn').onclick=()=>runRecon();
+  $('reconCo').addEventListener('focus',fillCoList);
+  $('reconOut').addEventListener('click',e=>{if(e.target.closest('[data-recon="apply"]'))applyRecon().catch(err=>toast('Kaydedilemedi: '+dbError(err),'err'))});
   $('quoteScanBtn').onclick=()=>scanQuotes().catch(e=>toast('Tarama durdu: '+(e.message||e),'err'));
   $('fixAllBtn').onclick=()=>fixAll().catch(e=>{toast('Düzeltme durdu: '+(e.message||e),'err')});
   $('branches').addEventListener('click',e=>{const b=e.target.closest('.branch');if(!b)return;settings.branch=b.dataset.branch;saveSettings().catch(()=>{});if(!$('editId').value&&!$('renewFrom').value&&!$('customer').value.trim()){const g=GROUPS.find(x=>x.k===settings.branch);if(g&&g.kinds){$('kind').value=g.kinds[0];renderExtra()}}render()});
