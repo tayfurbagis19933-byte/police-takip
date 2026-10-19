@@ -938,8 +938,26 @@ function samePolicy(r,d){
   if(!a||a.length<5||a!==b)return false;
   if(d.kind&&d.kind!=='Diğer'&&r.kind&&r.kind!=='Diğer'&&r.kind!==d.kind)return false;
   if(isDate(r.end)&&isDate(d.end))return dayDiff(r.end,d.end)<=45;
-  if(isDate(r.start)&&isDate(r.end)&&isDate(d.start))return d.start>=r.start&&d.start<=r.end;
+  if(isDate(r.start)&&isDate(r.end)&&isDate(d.start))return d.start>=r.start&&d.start<=addDaysISO(r.end,-5);
   return true;
+}
+/* Yeni belge, listedeki aktif bir poliçenin yenilemesi mi? (yeni başlangıç ≈ eski bitiş) */
+function renewalOf(d,list){
+  if(!d||!isDate(d.start))return null;
+  const pb=polBase(d.policyNo),cn=trLower(d.customer||''),pl=compact(d.plate||'');
+  let best=null,bd=99;
+  for(const p of list){
+    if(p.status!=='active'||p.id===d.id||!isDate(p.end))continue;
+    const gap=dayDiff(d.start,p.end);if(gap>10)continue;
+    if(isDate(d.end)&&d.end<=p.end)continue;
+    const sameNo=pb&&pb.length>=5&&polBase(p.policyNo)===pb;
+    const sameKind=p.kind===d.kind;
+    const samePerson=cn&&(trLower(p.customer)===cn||sharesName(p.customer,d.customer));
+    const samePlate=groupOf(d.kind)==='arac'?(pl&&compact(p.plate||'')===pl):true;
+    if(!(sameNo||(sameKind&&samePerson&&samePlate)))continue;
+    if(gap<bd){bd=gap;best=p}
+  }
+  return best;
 }
 /* Zeyli mevcut kayda işle: değişen bilgiler (müşteri, plaka, telefon) alınır; dönem ve prim korunur, boşsa doldurulur */
 function zeylMerge(old,d,z,fname,now){
@@ -1412,7 +1430,7 @@ function showScreen(name){
 async function onSubmit(e){
   e.preventDefault();
   if(quoteWarn&&!$('editId').value&&!await yesNo(`Seçtiğin belge teklif gibi görünüyor (${quoteWarn}). Teklifler poliçe listesine girmemeli.\n\nYine de kaydedilsin mi?`,'Yine de kaydet',true))return;
-  const id=$('editId').value,from=$('renewFrom').value,old=id?records.find(x=>x.id===id):null;
+  const id=$('editId').value,old=id?records.find(x=>x.id===id):null;let from=$('renewFrom').value,autoFrom=null;
   const customer=$('customer').value.trim(),start=$('start').value,end=$('end').value;
   if(!customer){toast('Müşteri adı gerekli.','err');$('customer').focus();return}
   if(!isDate(end)){toast('Bitiş tarihi gerekli.','err');$('end').focus();return}
@@ -1420,6 +1438,7 @@ async function onSubmit(e){
   const now=new Date().toISOString();
   const r={id:id||uid(),customer,phone:$('phone').value.trim(),plate:$('plate').value.trim().toUpperCase(),kind:KINDS.includes($('kind').value)?$('kind').value:'Diğer',company:$('company').value.trim(),policyNo:$('policyNo').value.trim(),start,end,premium:num($('premium').value),commission:num($('commission').value),notes:$('notes').value.trim(),followStatus:$('followStatus').value,followUpDate:isDate($('followUpDate').value)?$('followUpDate').value:'',extra:cleanExtra(readExtra()),
     status:old?old.status:'active',file:old?old.file:null,created:old?old.created:now,updated:now,previousId:from||(old&&old.previousId)||null,replacedBy:old?old.replacedBy:null,renewedAt:old?old.renewedAt:'',review:false};
+  if(!id&&!from){autoFrom=renewalOf(r,records);if(autoFrom){from=autoFrom.id;r.previousId=from}}
   if(!id&&!from&&r.policyNo){
     /* Aynı poliçe (aynı dönem) zaten kayıtlıysa: bu bir zeyl / ek belge olabilir */
     const cands=records.filter(x=>samePolicy(x,r)),match=cands.find(x=>x.status==='active')||cands[0];
@@ -1467,7 +1486,7 @@ async function onSubmit(e){
       if(ocrTxt&&ocrTxt.trim())learnFromEdit([ocrTxt],r.company,r).catch(()=>{});
       else if(learnBlob.type==='application/pdf')readDocument(learnBlob,{ocr:false}).then(p=>learnFromEdit(p,r.company,r)).catch(()=>{});
     }
-    toast('Poliçe kaydedildi.');reset();render();
+    toast(autoFrom?`Poliçe kaydedildi. Eski poliçe (${fmtDate(autoFrom.start)} → ${fmtDate(autoFrom.end)}) yenilendi olarak işaretlendi.`:'Poliçe kaydedildi.');reset();render();
   }catch(err){toast('Kaydedilemedi: '+dbError(err),'err')}
   finally{$('submitBtn').disabled=false}
 }
@@ -2134,7 +2153,7 @@ async function bulkImport(fileList){
   const seen=new Set(records.filter(r=>r.policyNo).map(r=>trLower(r.policyNo)+'|'+r.kind));
   let ok=0,dup=0,fail=0,rev=0,done=0,mrg=0;const quotes=[];
   const bp=[],bf=[];
-  const flush=async()=>{if(!bp.length)return;const a=bp.splice(0),b=bf.splice(0);await commit({put:a,fileSet:b});for(const x of pendSigs.splice(0))await markSig(x);render()};
+  const flush=async()=>{if(!bp.length)return;const a=bp.splice(0),b=bf.splice(0);await commit({put:a,fileSet:b.filter(Boolean)});for(const x of pendSigs.splice(0))await markSig(x);render()};
   try{
     for(const f of files){
       if(bulkCancel)break;
@@ -2179,6 +2198,8 @@ async function bulkImport(fileList){
           const r=normalize({id:uid(),customer:d.customer||('Kontrol: '+String(f.name||'belge').replace(/\.[^.]+$/,'').slice(0,60)),phone:d.phone||'',plate:d.plate||'',kind,company:d.company||'',policyNo:d.policyNo||'',start:d.start||'',end:d.end||'',premium:d.premium||'',commission:d.commission||rateCommission(d.company,kind,Number(d.premium)),notes:readErr?'Belge otomatik okunamadı ('+readErr+'). Bilgileri elle gir.':isPhoto?'Fotoğraftan okundu; değerleri belgeyle karşılaştır.':needs?'Toplu yüklemede okundu; eksik alanları kontrol et.':'',review:needs,created:now,updated:now});
           r.file={name:String(f.name||'belge').slice(0,200),type,size:buf.byteLength};
           if(key)seen.add(key);
+          const prevP=renewalOf(r,[...records,...bp]);
+          if(prevP){r.previousId=prevP.id;const pu={...prevP,status:'renewed',replacedBy:r.id,renewedAt:now,updated:now};const bi=bp.findIndex(x=>x.id===prevP.id);if(bi>=0)bp[bi]=pu;else{bp.push(pu);bf.push(null)}}
           bp.push(r);bf.push({id:r.id,type,buf});ok++;if(needs)rev++;
           pendSigs.push(f);
           if(bp.length>=10)await flush();
