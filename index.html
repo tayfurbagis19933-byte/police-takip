@@ -1236,13 +1236,20 @@ function badge(r){
   if(d<=settings.warningDays)return `<span class="pill due">${d} gün kaldı</span>`;
   return '<span class="pill">Aktif</span>';
 }
+function linkHTML(r){
+  const nx=r.replacedBy&&records.find(x=>x.id===r.replacedBy),pv=r.previousId&&records.find(x=>x.id===r.previousId);
+  let h='';
+  if(nx)h+=`<p class="meta" style="color:var(--green)"><strong>Yeni poliçesi:</strong> ${fmtDate(nx.start)} → ${fmtDate(nx.end)}${nx.policyNo?' · '+esc(nx.policyNo):''} · <button class="linkbtn" data-act="golink" data-to="${esc(nx.id)}">Yeni poliçeyi göster</button></p>`;
+  if(pv)h+=`<p class="meta"><strong>Önceki dönem:</strong> ${fmtDate(pv.start)} → ${fmtDate(pv.end)} · <button class="linkbtn" data-act="golink" data-to="${esc(pv.id)}">Eski poliçeyi göster</button></p>`;
+  return h;
+}
 function itemHTML(r){
   const ph=phoneDigits(r.phone),act=r.status==='active';
   const msg=`Merhaba ${r.customer}, ${r.kind} poliçenizin${r.plate?' ('+r.plate+')':''} bitiş tarihi ${fmtDate(r.end)}. Yenileme için size yardımcı olmak isteriz.`;
   return `<article class="item" data-id="${esc(r.id)}">
 <div class="itemtop"><div><h3>${esc(r.customer)} · ${esc(r.kind)}</h3>
 <div class="meta">${esc(r.plate||'Plaka/varlık bilgisi yok')} · ${esc(r.company||'Şirket belirtilmedi')}<br>Poliçe: ${esc(r.policyNo||'—')}<br>${r.start?fmtDate(r.start)+' → '+fmtDate(r.end):'Bitiş: '+fmtDate(r.end)}${r.premium!==''?'<br>Prim: '+money(r.premium)+' TL':''}${r.commission!==''?' · Komisyon: '+money(r.commission)+' TL':''}${r.phone?'<br>Tel: '+esc(r.phone):''}</div></div><div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${r.review?'<span class="pill due">Kontrol gerekli</span>':''}${badge(r)}</div></div>
-${extraText(r)?`<p class="meta">${esc(extraText(r))}</p>`:''}
+${extraText(r)?`<p class="meta">${esc(extraText(r))}</p>`:''}${linkHTML(r)}
 ${r.notes?`<p class="meta">${esc(r.notes)}</p>`:''}
 ${(r.followStatus&&r.followStatus!=='new')||r.followUpDate?`<p class="meta"><strong>Takip:</strong> ${esc(({'new':'Takip başlamadı','contacted':'Müşteri arandı','quoted':'Teklif verildi','waiting':'Dönüş bekleniyor','renewed':'Yenilendi','lost':'Kaybedildi'})[r.followStatus]||'Takip başlamadı')}${r.followUpDate?' · Sonraki tarih: '+fmtDate(r.followUpDate):''}</p>`:''}
 ${r.file?`<div class="filelink">Belge: ${esc(r.file.name)} · <button class="linkbtn" data-act="file">Aç</button></div>`:''}
@@ -2252,6 +2259,7 @@ async function onListClick(e){
   const b=e.target.closest('[data-act]');if(!b)return;
   const act=b.dataset.act;
   if(act==='more'){shown+=PAGE*2;render();return}
+  if(act==='golink'){const t=records.find(x=>x.id===b.dataset.to);if(!t)return;settings.branch='all';tab=t.status==='renewed'?'history':t.status==='cancelled'?'cancelled':'active';$('search').value=t.policyNo||t.customer;render();$('list').scrollIntoView({behavior:'smooth'});return}
   if(act==='oppmsg'){const r0=records.find(x=>x.id===b.dataset.rid);if(r0)openMsg({...r0,phone:r0.phone||b.dataset.ph||''},{oneri:b.dataset.oneri},'capraz');return}
   if(act==='opphide'){settings.oppHidden=[...new Set([...(settings.oppHidden||[]),b.dataset.key])];await saveSettings();render();toast('Bu öneri artık gösterilmeyecek.');return}
   if(act==='cust'){$('search').value=b.dataset.cust;tab='active';render();$('search').scrollIntoView({behavior:'smooth'});return}
