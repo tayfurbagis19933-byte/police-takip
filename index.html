@@ -1237,7 +1237,8 @@ function badge(r){
   return '<span class="pill">Aktif</span>';
 }
 function linkHTML(r){
-  const nx=r.replacedBy&&records.find(x=>x.id===r.replacedBy),pv=r.previousId&&records.find(x=>x.id===r.previousId);
+  const succ=()=>records.find(x=>x.previousId===r.id)||records.find(x=>x.id!==r.id&&x.status==='active'&&isDate(x.start)&&isDate(r.end)&&dayDiff(x.start,r.end)<=10&&x.kind===r.kind&&((polBase(x.policyNo)&&polBase(x.policyNo)===polBase(r.policyNo))||(sharesName(x.customer,r.customer)&&(groupOf(r.kind)!=='arac'||compact(x.plate||'')===compact(r.plate||'')))));
+  const nx=(r.replacedBy&&records.find(x=>x.id===r.replacedBy))||(r.status==='renewed'?succ():null),pv=r.previousId&&records.find(x=>x.id===r.previousId);
   let h='';
   if(nx)h+=`<p class="meta" style="color:var(--green)"><strong>Yeni poliçesi:</strong> ${fmtDate(nx.start)} → ${fmtDate(nx.end)}${nx.policyNo?' · '+esc(nx.policyNo):''} · <button class="linkbtn" data-act="golink" data-to="${esc(nx.id)}">Yeni poliçeyi göster</button></p>`;
   if(pv)h+=`<p class="meta"><strong>Önceki dönem:</strong> ${fmtDate(pv.start)} → ${fmtDate(pv.end)} · <button class="linkbtn" data-act="golink" data-to="${esc(pv.id)}">Eski poliçeyi göster</button></p>`;
@@ -1371,7 +1372,7 @@ function setFile(f){
   $('ocrStatus').textContent='Belge okunuyor…';
   runOCR();
 }
-const APP_VER='v14';
+const APP_VER='v28';
 const rateFor=(company,kind)=>{const R=settings.rates||{};if(lkey(company)){const v=R[ckey(company,kind)];if(v>0)return v}const g=R[ckey('',kind)];return g>0?g:0};
 const rateCommission=(company,kind,premium)=>{const pc=rateFor(company,kind);return pc&&premium>0?Math.round(premium*pc)/100:''};
 async function pushLearn(){
