@@ -890,9 +890,11 @@ function preferFileName(old,fn){
 }
 const suspectName=n=>!n||/^kontrol:/i.test(n)||/^müşteri\s/i.test(n)||badName(n);
 /* Belge metni + dosya adı birlikte: dosya adındaki isim ve branş, metinden çıkan tahminden önce gelir */
+function companyFromFile(fname){const f=' '+fold(String(fname||'').replace(/\.[a-z0-9]{2,5}$/i,'')).replace(/[_\-.]+/g,' ')+' ';const c=COMPANIES.find(([k])=>new RegExp('\\b'+k+'\\b').test(f))||(/\bak\b/.test(f)?[0,'Aksigorta']:/\banadolu\b/.test(f)?[0,'Anadolu Sigorta']:null);return c?c[1]:''}
 function fileHints(d,fname){
   const out={...d};
-  const fn=nameFromFile(fname),fk=kindFromFile(fname);
+  const fn=nameFromFile(fname),fk=kindFromFile(fname),fc=companyFromFile(fname);
+  if(fc&&!out.company)out.company=fc;
   if(fn&&(!out.customer||preferFileName(out.customer,fn)))out.customer=fn;
   if(out.customer&&badName(out.customer)&&!fn)delete out.customer;
   if(fk)out.kind=fk;
@@ -1353,7 +1355,7 @@ function startEdit(r){
 }
 function startRenew(r){
   reset();
-  ['customer','phone','plate','kind','company'].forEach(k=>$(k).value=r[k]||'');
+  ['customer','phone','plate','kind'].forEach(k=>$(k).value=r[k]||'');
   kindTouched=true;renderExtra(r.extra||{});
   $('renewFrom').value=r.id;showScreen('add');
   if(isDate(r.end)){$('start').value=r.end;$('end').value=addYear(r.end);$('end').dataset.auto='1'}
@@ -1372,7 +1374,7 @@ function setFile(f){
   $('ocrStatus').textContent='Belge okunuyor…';
   runOCR();
 }
-const APP_VER='v28';
+const APP_VER='v29';
 const rateFor=(company,kind)=>{const R=settings.rates||{};if(lkey(company)){const v=R[ckey(company,kind)];if(v>0)return v}const g=R[ckey('',kind)];return g>0?g:0};
 const rateCommission=(company,kind,premium)=>{const pc=rateFor(company,kind);return pc&&premium>0?Math.round(premium*pc)/100:''};
 async function pushLearn(){
@@ -1435,8 +1437,22 @@ function showScreen(name){
   if(name==='backup')renderStorage().catch(()=>{});
   if(name==='rates')fillCoList();
 }
+let submitting=false;
 async function onSubmit(e){
   e.preventDefault();
+  if(submitting)return;
+  submitting=true;
+  try{await onSubmitInner()}finally{submitting=false}
+}
+/* Aynı poliçe (aynı numara ve aynı dönem) zaten kayıtlı mı? */
+function findDuplicate(r){
+  return records.find(x=>{
+    if(x.id===r.id||x.status==='cancelled')return false;
+    if(r.policyNo&&x.policyNo){const a=polBase(x.policyNo),b=polBase(r.policyNo);if(a.length>=5&&a===b&&isDate(x.end)&&isDate(r.end)&&dayDiff(x.end,r.end)<=45)return true}
+    return trLower(x.customer)===trLower(r.customer)&&x.kind===r.kind&&x.start===r.start&&x.end===r.end&&compact(x.plate||'')===compact(r.plate||'');
+  })||null;
+}
+async function onSubmitInner(){
   if(quoteWarn&&!$('editId').value&&!await yesNo(`Seçtiğin belge teklif gibi görünüyor (${quoteWarn}). Teklifler poliçe listesine girmemeli.\n\nYine de kaydedilsin mi?`,'Yine de kaydet',true))return;
   const id=$('editId').value,old=id?records.find(x=>x.id===id):null;let from=$('renewFrom').value,autoFrom=null;
   const customer=$('customer').value.trim(),start=$('start').value,end=$('end').value;
@@ -1447,6 +1463,13 @@ async function onSubmit(e){
   const r={id:id||uid(),customer,phone:$('phone').value.trim(),plate:$('plate').value.trim().toUpperCase(),kind:KINDS.includes($('kind').value)?$('kind').value:'Diğer',company:$('company').value.trim(),policyNo:$('policyNo').value.trim(),start,end,premium:num($('premium').value),commission:num($('commission').value),notes:$('notes').value.trim(),followStatus:$('followStatus').value,followUpDate:isDate($('followUpDate').value)?$('followUpDate').value:'',extra:cleanExtra(readExtra()),
     status:old?old.status:'active',file:old?old.file:null,created:old?old.created:now,updated:now,previousId:from||(old&&old.previousId)||null,replacedBy:old?old.replacedBy:null,renewedAt:old?old.renewedAt:'',review:false};
   if(!id&&!from){autoFrom=renewalOf(r,records);if(autoFrom){from=autoFrom.id;r.previousId=from}}
+  if(!id&&(from||!r.policyNo)){
+    const dup=findDuplicate(r);
+    if(dup){
+      const a=await ask({title:'Bu poliçe zaten kayıtlı',text:`${dup.customer} · ${dup.kind} · ${dup.policyNo||'—'} (${fmtDate(dup.start)} → ${fmtDate(dup.end)}) listede zaten var. Aynı poliçeyi ikinci kez kaydetmene gerek yok.`,buttons:[{label:'Kaydetme',value:'cancel'},{label:'Yine de kaydet',value:'sep',cls:'secondary'}]});
+      if(a.value!=='sep'){reset();showScreen('list');render();return}
+    }
+  }
   if(!id&&!from&&r.policyNo){
     /* Aynı poliçe (aynı dönem) zaten kayıtlıysa: bu bir zeyl / ek belge olabilir */
     const cands=records.filter(x=>samePolicy(x,r)),match=cands.find(x=>x.status==='active')||cands[0];
@@ -2001,6 +2024,8 @@ async function fixPlan(r,{read=true,ocr=true,st=()=>{}}={}){
   if(!needDoc)d=fileHints({},fname);
   const cust=d.customer||fn;
   if(fn?preferFileName(r.customer,fn):(cust&&cust!==r.customer&&suspectName(r.customer)))ch.customer=[r.customer,fn||cust];
+  const fc=companyFromFile(fname);
+  if(fc&&r.company&&lkey(fc)!==lkey(r.company)&&!lkey(r.company).includes(lkey(fc))&&!lkey(fc).includes(lkey(r.company)))ch.company=[r.company,fc];
   const fk=kindFromFile(fname)||'';
   if(fk&&fk!==r.kind)ch.kind=[r.kind,fk];
   else if(!fk&&r.kind==='Diğer'&&KINDS.includes(d.kind)&&d.kind!=='Diğer')ch.kind=[r.kind,d.kind];
@@ -2118,7 +2143,8 @@ async function mergeDuplicates(){
     let main={...g[0]};
     for(const r of g.slice(1)){
       const fn=r.file?r.file.name:'';
-      main=normalize({...main,...zeylMerge(main,r,{isZeyl:true,no:0,cancel:false},fn,now)});
+      const twin=r.start===main.start&&r.end===main.end&&(!fn||!main.file||main.file.name===fn);
+      if(!twin)main=normalize({...main,...zeylMerge(main,r,{isZeyl:true,no:0,cancel:false},fn,now)});
       main.file=main.file||g[0].file;
       if(r.followStatus!=='new'&&main.followStatus==='new'){main.followStatus=r.followStatus;main.followUpDate=r.followUpDate||main.followUpDate}
       if(r.status==='renewed'&&main.status==='active'){main.status='renewed';main.replacedBy=r.replacedBy;main.renewedAt=r.renewedAt}
@@ -2775,6 +2801,7 @@ async function init(){
     $('notice').textContent='Bu tarayıcıda kalıcı depolama kullanılamıyor (gizli sekme olabilir). Kayıtlar sayfa kapanınca kaybolur; sık sık yedek al.';
   }
   updateSettingsUI();reset();render();scheduleSync();
+  setTimeout(()=>{try{const g=findDuplicateGroups(records);if(g.length)toast(`${g.reduce((n,x)=>n+x.length-1,0)} çift kayıt var. "Yedek" menüsünden "Çift kayıtları bul ve birleştir"e bas.`)}catch{}},1500);
   if(migrated)toast(`${migrated} eski kayıt yeni veritabanına taşındı.`);
   if(settings.pin)lockApp();else notifyDue();
   if(settings.notify)registerPeriodic();
